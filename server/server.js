@@ -1,10 +1,49 @@
 const express = require('express');
 const cors = require('cors');
+const multer = require('multer');
+const fs = require('fs');
+const path = require('path');
 const { openai } = require('@ai-sdk/openai');
 const { generateText } = require('ai');
+const OpenAI = require('openai');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Initialize OpenAI client for Whisper
+const openaiClient = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+// Configure multer for file uploads
+const upload = multer({
+  dest: 'uploads/', // temporary directory for uploaded files
+  limits: {
+    fileSize: 25 * 1024 * 1024, // 25MB limit (Whisper's max)
+  },
+  fileFilter: (req, file, cb) => {
+    // Check file type
+    const allowedTypes = ['audio/mp3', 'audio/mpeg', 'audio/wav', 'audio/m4a', 'audio/webm', 'audio/mp4'];
+    const allowedExtensions = ['.mp3', '.mp4', '.mpeg', '.mpga', '.m4a', '.wav', '.webm'];
+    
+    const hasValidMimeType = allowedTypes.includes(file.mimetype);
+    const hasValidExtension = allowedExtensions.some(ext => 
+      file.originalname.toLowerCase().endsWith(ext)
+    );
+    
+    if (hasValidMimeType || hasValidExtension) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Supported formats: mp3, mp4, mpeg, mpga, m4a, wav, webm'));
+    }
+  },
+});
+
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
 // Middleware
 app.use(cors());
@@ -33,6 +72,62 @@ app.get('/', (req, res) => {
     status: 'Ninety API is running!', 
     timestamp: new Date().toISOString() 
   });
+});
+
+// Voice transcription endpoint
+app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
+  console.log('🎙️ Railway API: POST /api/transcribe called');
+  
+  let tempFilePath = null;
+  
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No audio file provided' });
+    }
+
+    tempFilePath = req.file.path;
+    console.log('📁 Uploaded file:', req.file.originalname);
+    console.log('📊 File size:', (req.file.size / 1024 / 1024).toFixed(2), 'MB');
+    console.log('🔑 OpenAI API Key present:', !!process.env.OPENAI_API_KEY);
+
+    // Create a read stream for the uploaded file
+    const audioFile = fs.createReadStream(tempFilePath);
+
+    // Transcribe using OpenAI Whisper
+    console.log('🎵 Starting transcription with Whisper...');
+    const transcription = await openaiClient.audio.transcriptions.create({
+      file: audioFile,
+      model: 'gpt-4o-mini-transcribe', // Use the latest model for better quality
+      response_format: 'text',
+      prompt: 'The following is a conversation about fitness, workouts, nutrition, and health-related topics.',
+    });
+
+    console.log('✅ Transcription successful');
+    console.log('📝 Transcribed text:', transcription.substring(0, 100) + '...');
+
+    res.json({
+      transcription: transcription,
+      originalFileName: req.file.originalname,
+      fileSize: req.file.size,
+    });
+
+  } catch (error) {
+    console.error('❌ Transcription error:', error);
+    res.status(500).json({
+      error: 'Transcription failed',
+      details: error.message,
+    });
+  } finally {
+    // Clean up: delete the temporary file
+    if (tempFilePath && fs.existsSync(tempFilePath)) {
+      try {
+        fs.unlinkSync(tempFilePath);
+        console.log('🗑️ Cleaned up temporary file:', tempFilePath);
+      } catch (cleanupError) {
+        console.error('⚠️ Failed to cleanup file:', cleanupError.message);
+      }
+    }
+  }
 });
 
 // Chat endpoint

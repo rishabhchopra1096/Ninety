@@ -1,6 +1,8 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, TextInput, ScrollView, KeyboardAvoidingView, Animated, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, TextInput, ScrollView, KeyboardAvoidingView, Animated, Dimensions, Modal, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Audio } from 'expo-audio';
+import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing, typography, borderRadius, shadows } from '../../constants/theme';
 import { generateAPIUrl } from '../../utils';
 
@@ -20,6 +22,15 @@ export default function ChatScreen() {
   const [isTyping, setIsTyping] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
+  
+  // Voice recording state
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const recordingTimer = useRef<NodeJS.Timeout | null>(null);
+  
+  // Attachment modal state
+  const [showAttachmentModal, setShowAttachmentModal] = useState(false);
   
   // Log the API URL being used
   const apiUrl = generateAPIUrl('/api/chat');
@@ -158,6 +169,242 @@ export default function ChatScreen() {
     await sendToAPI(testMessage);
   }, [sendToAPI]);
 
+  // Voice Recording Functions
+  const requestAudioPermission = async () => {
+    const { status } = await Audio.requestPermissionsAsync();
+    return status === 'granted';
+  };
+
+  const startRecording = async () => {
+    try {
+      const hasPermission = await requestAudioPermission();
+      if (!hasPermission) {
+        Alert.alert('Permission required', 'Please allow microphone access to record voice messages');
+        return;
+      }
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      console.log('🎙️ Starting recording...');
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      
+      setRecording(recording);
+      setIsRecording(true);
+      setRecordingDuration(0);
+
+      // Start timer
+      recordingTimer.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+
+    } catch (err) {
+      console.error('Failed to start recording', err);
+      Alert.alert('Error', 'Failed to start recording. Please try again.');
+    }
+  };
+
+  const stopRecording = async () => {
+    if (!recording) return;
+
+    try {
+      console.log('🛑 Stopping recording...');
+      setIsRecording(false);
+      
+      if (recordingTimer.current) {
+        clearInterval(recordingTimer.current);
+        recordingTimer.current = null;
+      }
+
+      await recording.stopAndUnloadAsync();
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+      });
+
+      const uri = recording.getURI();
+      console.log('🎵 Recording saved to:', uri);
+
+      // Add a temporary message showing that we're processing
+      const processingMessage: ChatMessage = {
+        id: `processing_${Date.now()}`,
+        role: 'user',
+        content: `🎵 Processing voice message (${recordingDuration}s)...`,
+        timestamp: new Date(),
+      };
+
+      setMessages(prevMessages => [...prevMessages, processingMessage]);
+      setRecording(null);
+      setRecordingDuration(0);
+
+      // Send to transcription API
+      await transcribeAudio(uri, processingMessage.id);
+
+    } catch (error) {
+      console.error('Failed to stop recording', error);
+      Alert.alert('Error', 'Failed to save recording. Please try again.');
+      setRecording(null);
+      setRecordingDuration(0);
+    }
+  };
+
+  // Transcribe audio using OpenAI Whisper
+  const transcribeAudio = async (audioUri: string, processingMessageId: string) => {
+    try {
+      console.log('🎙️ Starting transcription for:', audioUri);
+      setIsTyping(true);
+
+      // Create form data for the audio file
+      const formData = new FormData();
+      
+      // Create file object from audio URI
+      const response = await fetch(audioUri);
+      const audioBlob = await response.blob();
+      
+      formData.append('audio', audioBlob, 'recording.m4a');
+
+      const transcriptionUrl = generateAPIUrl('/api/transcribe');
+      console.log('📡 Sending to transcription API:', transcriptionUrl);
+
+      const transcriptionResponse = await fetch(transcriptionUrl, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!transcriptionResponse.ok) {
+        throw new Error(`Transcription API error: ${transcriptionResponse.status}`);
+      }
+
+      const transcriptionData = await transcriptionResponse.json();
+      console.log('📝 Transcription received:', transcriptionData.transcription);
+
+      // Remove the processing message and add the transcribed message
+      setMessages(prevMessages => {
+        const updatedMessages = prevMessages.filter(msg => msg.id !== processingMessageId);
+        
+        const transcribedMessage: ChatMessage = {
+          id: `voice_${Date.now()}`,
+          role: 'user',
+          content: transcriptionData.transcription,
+          timestamp: new Date(),
+        };
+        
+        return [...updatedMessages, transcribedMessage];
+      });
+
+      // Send the transcribed text to Ava for response
+      const userMessage: ChatMessage = {
+        id: `voice_${Date.now()}`,
+        role: 'user',
+        content: transcriptionData.transcription,
+        timestamp: new Date(),
+      };
+
+      await sendToAPI(userMessage);
+
+    } catch (error) {
+      console.error('❌ Transcription error:', error);
+      
+      // Remove processing message and show error
+      setMessages(prevMessages => {
+        const updatedMessages = prevMessages.filter(msg => msg.id !== processingMessageId);
+        
+        const errorMessage: ChatMessage = {
+          id: `error_${Date.now()}`,
+          role: 'user',
+          content: '❌ Failed to transcribe voice message. Please try again or type your message.',
+          timestamp: new Date(),
+        };
+        
+        return [...updatedMessages, errorMessage];
+      });
+      
+      Alert.alert(
+        'Transcription Failed', 
+        'Could not process your voice message. Please try again or type your message instead.'
+      );
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  // Image/Camera Functions
+  const requestCameraPermission = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    return status === 'granted';
+  };
+
+  const requestMediaPermission = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    return status === 'granted';
+  };
+
+  const pickImage = async () => {
+    try {
+      const hasPermission = await requestCameraPermission();
+      if (!hasPermission) {
+        Alert.alert('Permission required', 'Please allow photo library access to select images');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 1,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const imageMessage: ChatMessage = {
+          id: `image_${Date.now()}`,
+          role: 'user',
+          content: `📸 Image attached - Image processing not yet implemented`,
+          timestamp: new Date(),
+        };
+
+        setMessages(prevMessages => [...prevMessages, imageMessage]);
+        setShowAttachmentModal(false);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to select image. Please try again.');
+    }
+  };
+
+  const takePhoto = async () => {
+    try {
+      const hasPermission = await requestMediaPermission();
+      if (!hasPermission) {
+        Alert.alert('Permission required', 'Please allow camera access to take photos');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 1,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const photoMessage: ChatMessage = {
+          id: `photo_${Date.now()}`,
+          role: 'user',
+          content: `📸 Photo taken - Image processing not yet implemented`,
+          timestamp: new Date(),
+        };
+
+        setMessages(prevMessages => [...prevMessages, photoMessage]);
+        setShowAttachmentModal(false);
+      }
+    } catch (error) {
+      console.error('Error taking photo:', error);
+      Alert.alert('Error', 'Failed to take photo. Please try again.');
+    }
+  };
+
   // Render individual message with modern styling
   const renderMessage = (message: ChatMessage, index: number) => {
     const isUser = message.role === 'user';
@@ -290,10 +537,32 @@ export default function ChatScreen() {
 
         {/* Modern Input Bar */}
         <SafeAreaView style={styles.inputSafeArea}>
+          {/* Voice Recording Overlay */}
+          {isRecording && (
+            <View style={styles.recordingOverlay}>
+              <View style={styles.recordingContent}>
+                <View style={styles.recordingIndicator}>
+                  <View style={[styles.recordingDot, { backgroundColor: '#ff4444' }]} />
+                  <Text style={styles.recordingText}>Recording...</Text>
+                  <Text style={styles.recordingDuration}>
+                    {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, '0')}
+                  </Text>
+                </View>
+                <TouchableOpacity style={styles.stopRecordingButton} onPress={stopRecording}>
+                  <Text style={styles.stopRecordingText}>⏹️</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
           <View style={styles.inputContainer}>
             <View style={styles.inputRow}>
-              {/* Future: Voice/Camera buttons */}
-              <TouchableOpacity style={styles.attachButton} disabled>
+              {/* Attachment Button */}
+              <TouchableOpacity 
+                style={styles.attachButton} 
+                onPress={() => setShowAttachmentModal(true)}
+                disabled={isRecording}
+              >
                 <Text style={styles.attachButtonText}>📎</Text>
               </TouchableOpacity>
               
@@ -301,34 +570,101 @@ export default function ChatScreen() {
               <View style={styles.inputWrapper}>
                 <TextInput
                   style={styles.textInput}
-                  placeholder="Message Ava..."
+                  placeholder={isRecording ? "Recording..." : "Message Ava..."}
                   placeholderTextColor={colors.textSecondary}
                   value={input}
                   onChangeText={setInput}
                   multiline
                   maxLength={500}
-                  editable={!isTyping}
+                  editable={!isTyping && !isRecording}
                   returnKeyType="send"
                   onSubmitEditing={handleSend}
                 />
               </View>
               
-              {/* Send Button */}
-              <TouchableOpacity 
-                style={[
-                  styles.sendButtonModern, 
-                  (!input.trim() || isTyping) && styles.sendButtonDisabled
-                ]}
-                onPress={handleSend}
-                disabled={!input.trim() || isTyping}
-              >
-                <Text style={styles.sendButtonIcon}>
-                  {isTyping ? "⏳" : "➤"}
-                </Text>
-              </TouchableOpacity>
+              {/* Voice/Send Button */}
+              {input.trim() || isTyping ? (
+                <TouchableOpacity 
+                  style={[
+                    styles.sendButtonModern, 
+                    (!input.trim() || isTyping) && styles.sendButtonDisabled
+                  ]}
+                  onPress={handleSend}
+                  disabled={!input.trim() || isTyping || isRecording}
+                >
+                  <Text style={styles.sendButtonIcon}>
+                    {isTyping ? "⏳" : "➤"}
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity 
+                  style={[
+                    styles.voiceButton, 
+                    isRecording && styles.voiceButtonRecording
+                  ]}
+                  onPress={isRecording ? stopRecording : startRecording}
+                  disabled={isTyping}
+                >
+                  <Text style={[
+                    styles.voiceButtonIcon,
+                    isRecording && styles.voiceButtonIconRecording
+                  ]}>
+                    🎙️
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         </SafeAreaView>
+
+        {/* Attachment Modal */}
+        <Modal
+          visible={showAttachmentModal}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowAttachmentModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <TouchableOpacity 
+              style={styles.modalBackdrop}
+              onPress={() => setShowAttachmentModal(false)}
+            />
+            <View style={styles.attachmentModal}>
+              <View style={styles.modalHandle} />
+              
+              <Text style={styles.modalTitle}>Add to your message</Text>
+              
+              <View style={styles.attachmentOptions}>
+                <TouchableOpacity style={styles.attachmentOption} onPress={takePhoto}>
+                  <View style={[styles.attachmentIconContainer, { backgroundColor: '#4CAF50' }]}>
+                    <Text style={styles.attachmentIcon}>📷</Text>
+                  </View>
+                  <Text style={styles.attachmentLabel}>Camera</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity style={styles.attachmentOption} onPress={pickImage}>
+                  <View style={[styles.attachmentIconContainer, { backgroundColor: '#2196F3' }]}>
+                    <Text style={styles.attachmentIcon}>🖼️</Text>
+                  </View>
+                  <Text style={styles.attachmentLabel}>Photo</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={styles.attachmentOption} 
+                  onPress={() => {
+                    setShowAttachmentModal(false);
+                    startRecording();
+                  }}
+                >
+                  <View style={[styles.attachmentIconContainer, { backgroundColor: '#FF9800' }]}>
+                    <Text style={styles.attachmentIcon}>🎙️</Text>
+                  </View>
+                  <Text style={styles.attachmentLabel}>Voice</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </KeyboardAvoidingView>
     </View>
   );
@@ -548,7 +884,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   
-  // Attachment Button (Future use)
+  // Attachment Button
   attachButton: {
     width: 36,
     height: 36,
@@ -561,7 +897,7 @@ const styles = StyleSheet.create({
   },
   attachButtonText: {
     fontSize: 16,
-    opacity: 0.3, // Disabled state
+    opacity: 0.8,
   },
   
   // Text Input Wrapper
@@ -606,6 +942,141 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.background,
     fontWeight: 'bold',
+  },
+  
+  // Voice Button Styles
+  voiceButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+    ...shadows.sm,
+    elevation: 2,
+  },
+  voiceButtonRecording: {
+    backgroundColor: '#ff4444',
+    transform: [{ scale: 1.1 }],
+  },
+  voiceButtonIcon: {
+    fontSize: 16,
+  },
+  voiceButtonIconRecording: {
+    fontSize: 18,
+  },
+  
+  // Voice Recording Overlay Styles
+  recordingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(255, 68, 68, 0.95)',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    zIndex: 1000,
+  },
+  recordingContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  recordingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  recordingDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: spacing.sm,
+  },
+  recordingText: {
+    ...typography.body,
+    color: colors.background,
+    fontWeight: '600',
+    marginRight: spacing.md,
+  },
+  recordingDuration: {
+    ...typography.body,
+    color: colors.background,
+    fontWeight: '500',
+  },
+  stopRecordingButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stopRecordingText: {
+    fontSize: 20,
+  },
+  
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  attachmentModal: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    minHeight: 200,
+    ...shadows.sm,
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: '#c7c7cc',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: spacing.lg,
+  },
+  modalTitle: {
+    ...typography.h3,
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: spacing.xl,
+    fontWeight: '600',
+  },
+  attachmentOptions: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingHorizontal: spacing.md,
+  },
+  attachmentOption: {
+    alignItems: 'center',
+    minWidth: 80,
+  },
+  attachmentIconContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+    ...shadows.sm,
+    elevation: 2,
+  },
+  attachmentIcon: {
+    fontSize: 24,
+  },
+  attachmentLabel: {
+    ...typography.caption,
+    color: colors.text,
+    textAlign: 'center',
+    fontWeight: '500',
   },
   
   // Error Styles
