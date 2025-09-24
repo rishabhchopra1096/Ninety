@@ -1,0 +1,19 @@
+{
+  "name": "ninety-api",
+  "version": "1.0.0",
+  "description": "API for Ninety fitness app",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^2.0.34",
+    "ai": "^5.0.51",
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
