@@ -81,7 +81,11 @@ app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
   let tempFilePath = null;
   
   try {
+    // Debug: Log the entire req.file object to diagnose issues
+    console.log('📦 req.file received:', JSON.stringify(req.file, null, 2));
+
     if (!req.file) {
+      console.error('❌ No file received in request');
       return res.status(400).json({ error: 'No audio file provided' });
     }
 

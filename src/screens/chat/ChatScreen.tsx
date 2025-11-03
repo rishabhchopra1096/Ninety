@@ -1,10 +1,12 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, TextInput, ScrollView, KeyboardAvoidingView, Animated, Dimensions, Modal, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, TextInput, ScrollView, KeyboardAvoidingView, Animated, Dimensions, Modal, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Audio } from 'expo-audio';
+import { useAudioRecorder, AudioModule } from 'expo-audio';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing, typography, borderRadius, shadows } from '../../constants/theme';
 import { generateAPIUrl } from '../../utils';
+import { useAuth } from '../../contexts/AuthContext';
+import { saveMessage, loadChatHistory } from '../../services/chatService';
 
 const { width } = Dimensions.get('window');
 
@@ -17,36 +19,74 @@ interface ChatMessage {
 }
 
 export default function ChatScreen() {
+  const { user } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
-  
+
   // Voice recording state
-  const [isRecording, setIsRecording] = useState(false);
+  const audioRecorder = useAudioRecorder();
   const [recordingDuration, setRecordingDuration] = useState(0);
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const recordingTimer = useRef<NodeJS.Timeout | null>(null);
-  
+
   // Attachment modal state
   const [showAttachmentModal, setShowAttachmentModal] = useState(false);
-  
+
   // Log the API URL being used
   const apiUrl = generateAPIUrl('/api/chat');
   console.log('🔗 Chat API URL:', apiUrl);
 
-  // Initialize with welcome message
+  // Load chat history on mount
   useEffect(() => {
-    const welcomeMessage: ChatMessage = {
-      id: 'welcome',
-      role: 'assistant',
-      content: "👋 Hi! I'm Ava, your AI fitness coach.\n\nI'm here to help you with your 90-day transformation journey. Ask me about:\n\n• Workout planning & progression\n• Nutrition & calorie calculations\n• Progress tracking & measurements\n• Motivation & accountability",
-      timestamp: new Date(),
+    const initializeChat = async () => {
+      if (!user) {
+        console.log('⚠️ No user logged in');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        console.log('📚 Loading chat history for user:', user.uid);
+        const history = await loadChatHistory(user.uid);
+
+        if (history.length === 0) {
+          // No history - show welcome message
+          const welcomeMessage: ChatMessage = {
+            id: 'welcome',
+            role: 'assistant',
+            content: "👋 Hi! I'm Ava, your AI fitness coach.\n\nI'm here to help you with your 90-day transformation journey. Ask me about:\n\n• Workout planning & progression\n• Nutrition & calorie calculations\n• Progress tracking & measurements\n• Motivation & accountability",
+            timestamp: new Date(),
+          };
+          setMessages([welcomeMessage]);
+
+          // Save welcome message to Firestore
+          await saveMessage(user.uid, welcomeMessage);
+        } else {
+          // Load existing history
+          setMessages(history);
+        }
+      } catch (error) {
+        console.error('❌ Error loading chat history:', error);
+        // Show error but don't block - user can still use chat
+        Alert.alert('Error', 'Could not load chat history. Starting fresh.');
+
+        const welcomeMessage: ChatMessage = {
+          id: 'welcome',
+          role: 'assistant',
+          content: "👋 Hi! I'm Ava, your AI fitness coach.\n\nI'm here to help you with your 90-day transformation journey. Ask me about:\n\n• Workout planning & progression\n• Nutrition & calorie calculations\n• Progress tracking & measurements\n• Motivation & accountability",
+          timestamp: new Date(),
+        };
+        setMessages([welcomeMessage]);
+      } finally {
+        setLoading(false);
+      }
     };
-    
-    setMessages([welcomeMessage]);
-  }, []);
+
+    initializeChat();
+  }, [user]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -115,6 +155,16 @@ export default function ChatScreen() {
       // Add Ava's response to messages
       setMessages(prevMessages => [...prevMessages, avaMessage]);
 
+      // Save Ava's response to Firestore
+      if (user) {
+        try {
+          await saveMessage(user.uid, avaMessage);
+        } catch (error) {
+          console.error('❌ Error saving Ava message to Firestore:', error);
+          // Don't block user experience if save fails
+        }
+      }
+
       console.log('✅ Message completed');
     } catch (error) {
       console.error('❌ Send message error:', error);
@@ -136,8 +186,8 @@ export default function ChatScreen() {
   }, [apiUrl, convertMessagesToAPIFormat, messages]);
 
   // Handle sending messages
-  const handleSend = useCallback(() => {
-    if (!input.trim() || isTyping) return;
+  const handleSend = useCallback(async () => {
+    if (!input.trim() || isTyping || !user) return;
 
     const userMessage: ChatMessage = {
       id: `user_${Date.now()}`,
@@ -145,14 +195,22 @@ export default function ChatScreen() {
       content: input.trim(),
       timestamp: new Date(),
     };
-    
+
     // Add user message immediately to UI
     setMessages(prevMessages => [...prevMessages, userMessage]);
     setInput('');
 
+    // Save user message to Firestore
+    try {
+      await saveMessage(user.uid, userMessage);
+    } catch (error) {
+      console.error('❌ Error saving user message to Firestore:', error);
+      // Don't block user experience if save fails
+    }
+
     // Send to API
     sendToAPI(userMessage);
-  }, [input, isTyping, sendToAPI]);
+  }, [input, isTyping, user, sendToAPI]);
 
   // Test API connection
   const testAPIConnection = useCallback(async () => {
@@ -170,31 +228,21 @@ export default function ChatScreen() {
   }, [sendToAPI]);
 
   // Voice Recording Functions
-  const requestAudioPermission = async () => {
-    const { status } = await Audio.requestPermissionsAsync();
-    return status === 'granted';
-  };
-
   const startRecording = async () => {
     try {
-      const hasPermission = await requestAudioPermission();
-      if (!hasPermission) {
+      console.log('🎙️ Requesting audio permission...');
+
+      // Request permissions
+      const permission = await AudioModule.requestRecordingPermissionsAsync();
+      console.log('📝 Permission response:', permission);
+
+      if (!permission.granted) {
         Alert.alert('Permission required', 'Please allow microphone access to record voice messages');
         return;
       }
 
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
-
-      console.log('🎙️ Starting recording...');
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      
-      setRecording(recording);
-      setIsRecording(true);
+      console.log('✅ Permission granted, starting recording...');
+      await audioRecorder.record();
       setRecordingDuration(0);
 
       // Start timer
@@ -202,30 +250,25 @@ export default function ChatScreen() {
         setRecordingDuration(prev => prev + 1);
       }, 1000);
 
+      console.log('✅ Recording started successfully');
     } catch (err) {
-      console.error('Failed to start recording', err);
+      console.error('❌ Failed to start recording:', err);
       Alert.alert('Error', 'Failed to start recording. Please try again.');
     }
   };
 
   const stopRecording = async () => {
-    if (!recording) return;
+    if (!audioRecorder?.isRecording) return;
 
     try {
       console.log('🛑 Stopping recording...');
-      setIsRecording(false);
-      
+
       if (recordingTimer.current) {
         clearInterval(recordingTimer.current);
         recordingTimer.current = null;
       }
 
-      await recording.stopAndUnloadAsync();
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-      });
-
-      const uri = recording.getURI();
+      const uri = await audioRecorder.stop();
       console.log('🎵 Recording saved to:', uri);
 
       // Add a temporary message showing that we're processing
@@ -237,16 +280,16 @@ export default function ChatScreen() {
       };
 
       setMessages(prevMessages => [...prevMessages, processingMessage]);
-      setRecording(null);
       setRecordingDuration(0);
 
       // Send to transcription API
-      await transcribeAudio(uri, processingMessage.id);
+      if (uri) {
+        await transcribeAudio(uri, processingMessage.id);
+      }
 
     } catch (error) {
-      console.error('Failed to stop recording', error);
+      console.error('❌ Failed to stop recording:', error);
       Alert.alert('Error', 'Failed to save recording. Please try again.');
-      setRecording(null);
       setRecordingDuration(0);
     }
   };
@@ -259,12 +302,14 @@ export default function ChatScreen() {
 
       // Create form data for the audio file
       const formData = new FormData();
-      
-      // Create file object from audio URI
-      const response = await fetch(audioUri);
-      const audioBlob = await response.blob();
-      
-      formData.append('audio', audioBlob, 'recording.m4a');
+
+      // Use React Native's FormData file format (not Blob)
+      // This ensures proper metadata is sent to multer on the server
+      formData.append('audio', {
+        uri: audioUri,
+        type: 'audio/m4a',
+        name: 'recording.m4a',
+      } as any);
 
       const transcriptionUrl = generateAPIUrl('/api/transcribe');
       console.log('📡 Sending to transcription API:', transcriptionUrl);
@@ -456,6 +501,18 @@ export default function ChatScreen() {
     );
   };
 
+  // Loading display
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading your conversation...</Text>
+        </View>
+      </View>
+    );
+  }
+
   // Error display
   if (error) {
     return (
@@ -465,7 +522,7 @@ export default function ChatScreen() {
           <Text style={styles.errorSubtext}>
             Make sure you've added your OpenAI API key to .env.local
           </Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.retryButton}
             onPress={() => setError(null)}
           >
@@ -538,7 +595,7 @@ export default function ChatScreen() {
         {/* Modern Input Bar */}
         <SafeAreaView style={styles.inputSafeArea}>
           {/* Voice Recording Overlay */}
-          {isRecording && (
+          {audioRecorder?.isRecording && (
             <View style={styles.recordingOverlay}>
               <View style={styles.recordingContent}>
                 <View style={styles.recordingIndicator}>
@@ -558,56 +615,56 @@ export default function ChatScreen() {
           <View style={styles.inputContainer}>
             <View style={styles.inputRow}>
               {/* Attachment Button */}
-              <TouchableOpacity 
-                style={styles.attachButton} 
+              <TouchableOpacity
+                style={styles.attachButton}
                 onPress={() => setShowAttachmentModal(true)}
-                disabled={isRecording}
+                disabled={audioRecorder?.isRecording}
               >
                 <Text style={styles.attachButtonText}>📎</Text>
               </TouchableOpacity>
-              
+
               {/* Text Input */}
               <View style={styles.inputWrapper}>
                 <TextInput
                   style={styles.textInput}
-                  placeholder={isRecording ? "Recording..." : "Message Ava..."}
+                  placeholder={audioRecorder?.isRecording ? "Recording..." : "Message Ava..."}
                   placeholderTextColor={colors.textSecondary}
                   value={input}
                   onChangeText={setInput}
                   multiline
                   maxLength={500}
-                  editable={!isTyping && !isRecording}
+                  editable={!isTyping && !audioRecorder?.isRecording}
                   returnKeyType="send"
                   onSubmitEditing={handleSend}
                 />
               </View>
-              
+
               {/* Voice/Send Button */}
               {input.trim() || isTyping ? (
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={[
-                    styles.sendButtonModern, 
+                    styles.sendButtonModern,
                     (!input.trim() || isTyping) && styles.sendButtonDisabled
                   ]}
                   onPress={handleSend}
-                  disabled={!input.trim() || isTyping || isRecording}
+                  disabled={!input.trim() || isTyping || audioRecorder?.isRecording}
                 >
                   <Text style={styles.sendButtonIcon}>
                     {isTyping ? "⏳" : "➤"}
                   </Text>
                 </TouchableOpacity>
               ) : (
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={[
-                    styles.voiceButton, 
-                    isRecording && styles.voiceButtonRecording
+                    styles.voiceButton,
+                    audioRecorder?.isRecording && styles.voiceButtonRecording
                   ]}
-                  onPress={isRecording ? stopRecording : startRecording}
+                  onPress={audioRecorder?.isRecording ? stopRecording : startRecording}
                   disabled={isTyping}
                 >
                   <Text style={[
                     styles.voiceButtonIcon,
-                    isRecording && styles.voiceButtonIconRecording
+                    audioRecorder?.isRecording && styles.voiceButtonIconRecording
                   ]}>
                     🎙️
                   </Text>
@@ -1079,6 +1136,21 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   
+  // Loading Styles
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xl,
+    backgroundColor: colors.background,
+  },
+  loadingText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: spacing.md,
+  },
+
   // Error Styles
   errorContainer: {
     flex: 1,
