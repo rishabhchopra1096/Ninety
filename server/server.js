@@ -22,18 +22,28 @@ const upload = multer({
     fileSize: 25 * 1024 * 1024, // 25MB limit (Whisper's max)
   },
   fileFilter: (req, file, cb) => {
+    // Debug logging to see what React Native sends
+    console.log('🔍 fileFilter called with:');
+    console.log('   mimetype:', file.mimetype);
+    console.log('   originalname:', file.originalname);
+    console.log('   fieldname:', file.fieldname);
+
     // Check file type
-    const allowedTypes = ['audio/mp3', 'audio/mpeg', 'audio/wav', 'audio/m4a', 'audio/webm', 'audio/mp4'];
+    const allowedTypes = ['audio/mp3', 'audio/mpeg', 'audio/wav', 'audio/m4a', 'audio/webm', 'audio/mp4', 'audio/x-m4a'];
     const allowedExtensions = ['.mp3', '.mp4', '.mpeg', '.mpga', '.m4a', '.wav', '.webm'];
-    
-    const hasValidMimeType = allowedTypes.includes(file.mimetype);
-    const hasValidExtension = allowedExtensions.some(ext => 
+
+    // More lenient validation for React Native uploads
+    const hasValidMimeType = file.mimetype && allowedTypes.includes(file.mimetype);
+    const hasValidExtension = file.originalname && allowedExtensions.some(ext =>
       file.originalname.toLowerCase().endsWith(ext)
     );
-    
-    if (hasValidMimeType || hasValidExtension) {
+
+    // Accept if either mimetype OR extension is valid, or if it's from the 'audio' field
+    if (hasValidMimeType || hasValidExtension || file.fieldname === 'audio') {
+      console.log('   ✅ File accepted');
       cb(null, true);
     } else {
+      console.log('   ❌ File rejected');
       cb(new Error('Invalid file type. Supported formats: mp3, mp4, mpeg, mpga, m4a, wav, webm'));
     }
   },
