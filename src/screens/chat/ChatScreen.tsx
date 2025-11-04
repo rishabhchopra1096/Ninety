@@ -151,7 +151,9 @@ export default function ChatScreen() {
           'Accept': 'application/json',
         },
         body: JSON.stringify({
-          messages: apiMessages
+          messages: apiMessages,
+          userId: user?.uid || 'anonymous', // Send userId for function calling
+          recentMealsContext: [], // Will be populated later when we fetch from Firestore
         }),
       });
 
