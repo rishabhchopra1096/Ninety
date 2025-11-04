@@ -7,9 +7,34 @@ const { openai } = require('@ai-sdk/openai');
 const { generateText, tool, stepCountIs } = require('ai');
 const { z } = require('zod');
 const OpenAI = require('openai');
+const admin = require('firebase-admin');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Initialize Firebase Admin SDK
+try {
+  // Check if Firebase Admin is already initialized
+  if (!admin.apps.length) {
+    const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT
+      ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
+      : null;
+
+    if (serviceAccount) {
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+      });
+      console.log('🔥 Firebase Admin initialized successfully');
+    } else {
+      console.warn('⚠️  FIREBASE_SERVICE_ACCOUNT not found - running without Firestore');
+    }
+  }
+} catch (error) {
+  console.error('❌ Error initializing Firebase Admin:', error.message);
+}
+
+// Get Firestore instance (will be null if not initialized)
+const db = admin.apps.length > 0 ? admin.firestore() : null;
 
 // Initialize OpenAI client for Whisper
 const openaiClient = new OpenAI({
@@ -259,16 +284,54 @@ const tools = {
     execute: async ({ mealType, foods, timestamp, notes }, { abortSignal }) => {
       console.log('🔧 Executing logMeal tool');
 
-      // Extract userId from context (we'll need to pass this through)
-      // For now, using a global variable set in the request handler
       const userId = global.currentUserId || 'anonymous';
 
-      const mealId = `meal_${Date.now()}`;
-      if (!mockMealsDB[userId]) mockMealsDB[userId] = [];
-      mockMealsDB[userId].push({ id: mealId, mealType, foods, timestamp, notes });
-      console.log('✅ Meal logged:', mealId);
+      // If Firestore is not available, fall back to mock
+      if (!db) {
+        console.warn('⚠️  Firestore not available, using mock database');
+        const mealId = `meal_${Date.now()}`;
+        if (!mockMealsDB[userId]) mockMealsDB[userId] = [];
+        mockMealsDB[userId].push({ id: mealId, mealType, foods, timestamp, notes });
+        console.log('✅ Meal logged to mock:', mealId);
+        return { success: true, mealId, message: 'Meal logged successfully' };
+      }
 
-      return { success: true, mealId, message: 'Meal logged successfully' };
+      try {
+        // Calculate totals from foods array
+        const totals = foods.reduce((acc, food) => ({
+          calories: acc.calories + (food.calories || 0),
+          protein: acc.protein + (food.protein || 0),
+          carbs: acc.carbs + (food.carbs || 0),
+          fats: acc.fats + (food.fats || 0),
+          fiber: acc.fiber + (food.fiber || 0),
+        }), { calories: 0, protein: 0, carbs: 0, fats: 0, fiber: 0 });
+
+        // Create meal document
+        const mealData = {
+          mealType,
+          timestamp: admin.firestore.Timestamp.fromDate(new Date(timestamp)),
+          foods,
+          totalCalories: totals.calories,
+          totalProtein: totals.protein,
+          totalCarbs: totals.carbs,
+          totalFats: totals.fats,
+          totalFiber: totals.fiber,
+          photoUrl: null,
+          photoUrls: [],
+          notes: notes || '',
+          loggedVia: 'chat',
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        const mealsRef = db.collection('nutrition').doc(userId).collection('meals');
+        const docRef = await mealsRef.add(mealData);
+
+        console.log('✅ Meal logged to Firestore:', docRef.id);
+        return { success: true, mealId: docRef.id, message: 'Meal logged successfully' };
+      } catch (error) {
+        console.error('❌ Error logging meal to Firestore:', error);
+        return { success: false, message: `Error: ${error.message}` };
+      }
     },
   }),
 
@@ -283,21 +346,68 @@ const tools = {
       console.log('🔧 Executing findRecentMeals tool');
 
       const userId = global.currentUserId || 'anonymous';
-      const userMeals = mockMealsDB[userId] || [];
 
-      const filtered = userMeals.filter(meal => {
-        if (mealType && meal.mealType !== mealType) return false;
-        if (containsFood) {
-          const hasFood = meal.foods.some(f =>
-            f.name.toLowerCase().includes(containsFood.toLowerCase())
-          );
-          if (!hasFood) return false;
+      // If Firestore is not available, fall back to mock
+      if (!db) {
+        console.warn('⚠️  Firestore not available, using mock database');
+        const userMeals = mockMealsDB[userId] || [];
+        const filtered = userMeals.filter(meal => {
+          if (mealType && meal.mealType !== mealType) return false;
+          if (containsFood) {
+            const hasFood = meal.foods.some(f =>
+              f.name.toLowerCase().includes(containsFood.toLowerCase())
+            );
+            if (!hasFood) return false;
+          }
+          return true;
+        }).slice(0, limit || 10);
+        console.log(`✅ Found ${filtered.length} recent meals from mock`);
+        return { meals: filtered };
+      }
+
+      try {
+        const mealsRef = db.collection('nutrition').doc(userId).collection('meals');
+        let query = mealsRef.orderBy('timestamp', 'desc').limit(limit || 10);
+
+        // Apply meal type filter if provided
+        if (mealType) {
+          query = query.where('mealType', '==', mealType);
         }
-        return true;
-      }).slice(0, limit || 10);
 
-      console.log(`✅ Found ${filtered.length} recent meals`);
-      return { meals: filtered };
+        const snapshot = await query.get();
+        let meals = [];
+
+        snapshot.forEach(doc => {
+          const data = doc.data();
+
+          // Apply containsFood filter if provided (client-side filtering)
+          if (containsFood) {
+            const hasFood = data.foods?.some(f =>
+              f.name.toLowerCase().includes(containsFood.toLowerCase())
+            );
+            if (!hasFood) return; // Skip this meal
+          }
+
+          meals.push({
+            id: doc.id,
+            mealType: data.mealType,
+            timestamp: data.timestamp?.toDate().toISOString(),
+            foods: data.foods || [],
+            totalCalories: data.totalCalories || 0,
+            totalProtein: data.totalProtein || 0,
+            totalCarbs: data.totalCarbs || 0,
+            totalFats: data.totalFats || 0,
+            totalFiber: data.totalFiber || 0,
+            notes: data.notes || '',
+          });
+        });
+
+        console.log(`✅ Found ${meals.length} recent meals from Firestore`);
+        return { meals };
+      } catch (error) {
+        console.error('❌ Error finding meals in Firestore:', error);
+        return { meals: [] };
+      }
     },
   }),
 
@@ -320,20 +430,61 @@ const tools = {
       console.log('🔧 Executing updateMeal tool');
 
       const userId = global.currentUserId || 'anonymous';
-      const userMealsList = mockMealsDB[userId] || [];
-      const mealIndex = userMealsList.findIndex(m => m.id === mealId);
 
-      if (mealIndex >= 0) {
-        const updates = {};
-        if (foods) updates.foods = foods;
-        if (notes) updates.notes = notes;
+      // If Firestore is not available, fall back to mock
+      if (!db) {
+        console.warn('⚠️  Firestore not available, using mock database');
+        const userMealsList = mockMealsDB[userId] || [];
+        const mealIndex = userMealsList.findIndex(m => m.id === mealId);
 
-        userMealsList[mealIndex] = { ...userMealsList[mealIndex], ...updates };
-        console.log('✅ Meal updated:', mealId);
-        return { success: true, message: 'Meal updated successfully' };
+        if (mealIndex >= 0) {
+          const updates = {};
+          if (foods) updates.foods = foods;
+          if (notes) updates.notes = notes;
+
+          userMealsList[mealIndex] = { ...userMealsList[mealIndex], ...updates };
+          console.log('✅ Meal updated in mock:', mealId);
+          return { success: true, message: 'Meal updated successfully' };
+        }
+
+        return { success: false, message: 'Meal not found' };
       }
 
-      return { success: false, message: 'Meal not found' };
+      try {
+        const mealRef = db.collection('nutrition').doc(userId).collection('meals').doc(mealId);
+        const updates = {};
+
+        // If foods array is updated, recalculate totals
+        if (foods) {
+          const totals = foods.reduce((acc, food) => ({
+            calories: acc.calories + (food.calories || 0),
+            protein: acc.protein + (food.protein || 0),
+            carbs: acc.carbs + (food.carbs || 0),
+            fats: acc.fats + (food.fats || 0),
+            fiber: acc.fiber + (food.fiber || 0),
+          }), { calories: 0, protein: 0, carbs: 0, fats: 0, fiber: 0 });
+
+          updates.foods = foods;
+          updates.totalCalories = totals.calories;
+          updates.totalProtein = totals.protein;
+          updates.totalCarbs = totals.carbs;
+          updates.totalFats = totals.fats;
+          updates.totalFiber = totals.fiber;
+        }
+
+        if (notes !== undefined) {
+          updates.notes = notes;
+        }
+
+        updates.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+
+        await mealRef.update(updates);
+        console.log('✅ Meal updated in Firestore:', mealId);
+        return { success: true, message: 'Meal updated successfully' };
+      } catch (error) {
+        console.error('❌ Error updating meal in Firestore:', error);
+        return { success: false, message: `Error: ${error.message}` };
+      }
     },
   }),
 
@@ -346,20 +497,72 @@ const tools = {
       console.log('🔧 Executing getDailySummary tool');
 
       const userId = global.currentUserId || 'anonymous';
-      const todayMeals = mockMealsDB[userId] || [];
 
-      const total = todayMeals.reduce((sum, m) => {
-        const mealCal = m.foods.reduce((s, f) => s + f.calories, 0);
-        return sum + mealCal;
-      }, 0);
+      // If Firestore is not available, fall back to mock
+      if (!db) {
+        console.warn('⚠️  Firestore not available, using mock database');
+        const todayMeals = mockMealsDB[userId] || [];
+        const total = todayMeals.reduce((sum, m) => {
+          const mealCal = m.foods.reduce((s, f) => s + f.calories, 0);
+          return sum + mealCal;
+        }, 0);
+        console.log('✅ Daily summary from mock:', total, 'calories');
+        return {
+          totalCalories: total,
+          calorieTarget: 2400,
+          progress: total / 2400,
+          mealsCount: todayMeals.length,
+        };
+      }
 
-      console.log('✅ Daily summary:', total, 'calories');
-      return {
-        totalCalories: total,
-        calorieTarget: 2400,
-        progress: total / 2400,
-        mealsCount: todayMeals.length,
-      };
+      try {
+        // Parse date and create start/end of day timestamps
+        const targetDate = new Date(date);
+        const startOfDay = new Date(targetDate);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(targetDate);
+        endOfDay.setHours(23, 59, 59, 999);
+
+        const mealsRef = db.collection('nutrition').doc(userId).collection('meals');
+        const snapshot = await mealsRef
+          .where('timestamp', '>=', admin.firestore.Timestamp.fromDate(startOfDay))
+          .where('timestamp', '<=', admin.firestore.Timestamp.fromDate(endOfDay))
+          .get();
+
+        const totals = { calories: 0, protein: 0, carbs: 0, fats: 0, fiber: 0 };
+        let mealsCount = 0;
+
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          totals.calories += data.totalCalories || 0;
+          totals.protein += data.totalProtein || 0;
+          totals.carbs += data.totalCarbs || 0;
+          totals.fats += data.totalFats || 0;
+          totals.fiber += data.totalFiber || 0;
+          mealsCount++;
+        });
+
+        console.log('✅ Daily summary from Firestore:', totals.calories, 'calories');
+        return {
+          date,
+          totalCalories: totals.calories,
+          totalProtein: totals.protein,
+          totalCarbs: totals.carbs,
+          totalFats: totals.fats,
+          totalFiber: totals.fiber,
+          calorieTarget: 2400,
+          progress: Math.min(totals.calories / 2400, 1.0),
+          mealsCount,
+        };
+      } catch (error) {
+        console.error('❌ Error getting daily summary from Firestore:', error);
+        return {
+          totalCalories: 0,
+          calorieTarget: 2400,
+          progress: 0,
+          mealsCount: 0,
+        };
+      }
     },
   }),
 };
