@@ -4,7 +4,7 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const { openai } = require('@ai-sdk/openai');
-const { generateText, tool } = require('ai');
+const { generateText, tool, stepCountIs } = require('ai');
 const { z } = require('zod');
 const OpenAI = require('openai');
 
@@ -401,7 +401,7 @@ app.post('/api/chat', async (req, res) => {
         content: msg.content
       })),
       tools,
-      maxSteps: 5, // Allow up to 5 tool call iterations
+      stopWhen: stepCountIs(5), // Allow up to 5 tool call iterations (v5 syntax)
       toolChoice: 'auto', // Let AI decide when to use tools
       // In v5, tools execute automatically using their built-in execute functions
     });
