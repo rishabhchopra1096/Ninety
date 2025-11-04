@@ -1,8 +1,9 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, spacing, typography, borderRadius } from '../../constants/theme';
+import { colors, spacing, typography } from '../../constants/theme';
 import { useAuth } from '../../contexts/AuthContext';
+import { Avatar, Card, Button } from '../../components';
 
 export default function ProfileMainScreen() {
   const { user, signOut } = useAuth();
@@ -27,21 +28,47 @@ export default function ProfileMainScreen() {
     );
   };
 
+  // Get user initials from email
+  const getInitials = (email: string | null | undefined) => {
+    if (!email) return '??';
+    const name = email.split('@')[0];
+    return name.substring(0, 2).toUpperCase();
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
         <Text style={styles.title}>Profile</Text>
 
+        {/* Avatar with user initials */}
+        <View style={styles.avatarContainer}>
+          <Avatar
+            initials={getInitials(user?.email)}
+            size="xl"
+            backgroundColor={colors.secondary}
+          />
+          {user?.email && (
+            <Text style={styles.emailText}>{user.email}</Text>
+          )}
+        </View>
+
+        {/* User Info Card */}
         {user && (
-          <View style={styles.infoContainer}>
+          <Card elevation="sm" padding="medium" radius="md" style={styles.infoCard}>
             <Text style={styles.label}>Email</Text>
             <Text style={styles.value}>{user.email}</Text>
-          </View>
+          </Card>
         )}
 
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Text style={styles.logoutButtonText}>Log Out</Text>
-        </TouchableOpacity>
+        {/* Logout Button with CalAI styling */}
+        <Button
+          variant="primary"
+          size="large"
+          onPress={handleLogout}
+          style={styles.logoutButton}
+        >
+          Log Out
+        </Button>
       </View>
     </SafeAreaView>
   );
@@ -54,38 +81,35 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: spacing.lg,
+    padding: spacing[6],
   },
   title: {
     ...typography.h1,
-    color: colors.text,
-    marginBottom: spacing.xl,
+    color: colors.primary,
+    marginBottom: spacing[8],
   },
-  infoContainer: {
-    backgroundColor: colors.surface,
-    padding: spacing.md,
-    borderRadius: borderRadius.md,
-    marginBottom: spacing.lg,
+  avatarContainer: {
+    alignItems: 'center',
+    marginBottom: spacing[8],
+  },
+  emailText: {
+    ...typography.body,
+    color: colors.neutral[500],
+    marginTop: spacing[3],
+  },
+  infoCard: {
+    marginBottom: spacing[6],
   },
   label: {
     ...typography.caption,
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
+    color: colors.neutral[500],
+    marginBottom: spacing[2],
   },
   value: {
     ...typography.body,
-    color: colors.text,
+    color: colors.primary,
   },
   logoutButton: {
-    backgroundColor: colors.error,
-    padding: spacing.md,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    marginTop: spacing.xl,
-  },
-  logoutButtonText: {
-    ...typography.body,
-    color: '#fff',
-    fontWeight: '600',
+    marginTop: spacing[8],
   },
 });

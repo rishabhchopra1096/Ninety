@@ -180,8 +180,6 @@ The main view features a before/after slider comparing Day 1 photos to the most 
 
 Photos are organized in a grid by month: "Month 1", "Month 2", "Month 3". Each month can be expanded to show all angles taken that month. Tapping any photo shows it full screen with the ability to swipe between months, creating a flipbook effect of their transformation.
 
-The interface allows customizable intervals - while monthly is default, users can choose to take photos more or less frequently based on preference. They can tell the AI: "I want to take progress photos every two weeks" and reminders adjust accordingly.
-
 #### Analytics & Pattern Analysis
 
 This combined screen provides insights into both progress patterns and potential obstacles. The top section shows key metrics in card format: "Activity Consistency: 94%", "Average Calories: 2,380/day", "Strength Gains: +27% average" (if applicable), "Days Remaining: 67".

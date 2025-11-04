@@ -3,18 +3,28 @@ import {
   View,
   Text,
   TextInput,
-  TouchableOpacity,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
   Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuth } from '../../contexts/AuthContext';
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
+import { Button } from '../../components';
 
-export default function SignupScreen({ navigation }) {
+type RootStackParamList = {
+  Login: undefined;
+};
+
+type SignupScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
+
+interface SignupScreenProps {
+  navigation: SignupScreenNavigationProp;
+}
+
+export default function SignupScreen({ navigation }: SignupScreenProps) {
   const { signUp } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -66,7 +76,7 @@ export default function SignupScreen({ navigation }) {
             <TextInput
               style={styles.input}
               placeholder="Email"
-              placeholderTextColor={colors.textSecondary}
+              placeholderTextColor={colors.neutral[500]}
               value={email}
               onChangeText={setEmail}
               autoCapitalize="none"
@@ -77,7 +87,7 @@ export default function SignupScreen({ navigation }) {
             <TextInput
               style={styles.input}
               placeholder="Password"
-              placeholderTextColor={colors.textSecondary}
+              placeholderTextColor={colors.neutral[500]}
               value={password}
               onChangeText={setPassword}
               secureTextEntry
@@ -88,7 +98,7 @@ export default function SignupScreen({ navigation }) {
             <TextInput
               style={styles.input}
               placeholder="Confirm Password"
-              placeholderTextColor={colors.textSecondary}
+              placeholderTextColor={colors.neutral[500]}
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               secureTextEntry
@@ -96,29 +106,28 @@ export default function SignupScreen({ navigation }) {
               editable={!loading}
             />
 
-            {/* Sign Up Button */}
-            <TouchableOpacity
-              style={[styles.button, loading && styles.buttonDisabled]}
+            {/* Sign Up Button - Using CalAI Design System */}
+            <Button
+              variant="primary"
+              size="large"
               onPress={handleSignup}
               disabled={loading}
+              loading={loading}
+              style={styles.signupButton}
             >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.buttonText}>Sign Up</Text>
-              )}
-            </TouchableOpacity>
+              Sign Up
+            </Button>
 
-            {/* Login Link */}
-            <TouchableOpacity
-              style={styles.linkContainer}
+            {/* Login Link - Using Ghost Variant */}
+            <Button
+              variant="ghost"
+              size="medium"
               onPress={() => navigation.navigate('Login')}
               disabled={loading}
+              style={styles.loginButton}
             >
-              <Text style={styles.linkText}>
-                Already have an account? <Text style={styles.linkBold}>Log In</Text>
-              </Text>
-            </TouchableOpacity>
+              Already have an account? Log In
+            </Button>
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -136,63 +145,41 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing[6],
     justifyContent: 'center',
   },
   header: {
     alignItems: 'center',
-    marginBottom: spacing.xxl,
+    marginBottom: spacing[10],
   },
   title: {
+    ...typography.display,
     fontSize: 48,
-    fontWeight: '700',
     color: colors.primary,
-    marginBottom: spacing.sm,
+    marginBottom: spacing[2],
   },
   subtitle: {
-    fontSize: 18,
-    color: colors.textSecondary,
-    fontWeight: '400',
+    ...typography.body,
+    color: colors.neutral[500],
   },
   form: {
     width: '100%',
   },
   input: {
-    backgroundColor: colors.inputBackground,
+    backgroundColor: colors.neutral[50],
     borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[4],
     fontSize: 16,
-    color: colors.text,
-    marginBottom: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  button: {
-    backgroundColor: colors.primary,
-    borderRadius: borderRadius.md,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-    marginTop: spacing.md,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  linkContainer: {
-    marginTop: spacing.lg,
-    alignItems: 'center',
-  },
-  linkText: {
-    fontSize: 16,
-    color: colors.textSecondary,
-  },
-  linkBold: {
     color: colors.primary,
-    fontWeight: '600',
+    marginBottom: spacing[4],
+    borderWidth: 1,
+    borderColor: colors.neutral[200],
+  },
+  signupButton: {
+    marginTop: spacing[4],
+  },
+  loginButton: {
+    marginTop: spacing[5],
   },
 });

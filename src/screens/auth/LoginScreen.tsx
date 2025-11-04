@@ -3,18 +3,28 @@ import {
   View,
   Text,
   TextInput,
-  TouchableOpacity,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
   Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuth } from '../../contexts/AuthContext';
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
+import { Button } from '../../components';
 
-export default function LoginScreen({ navigation }) {
+type RootStackParamList = {
+  Signup: undefined;
+};
+
+type LoginScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
+
+interface LoginScreenProps {
+  navigation: LoginScreenNavigationProp;
+}
+
+export default function LoginScreen({ navigation }: LoginScreenProps) {
   const { signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -53,7 +63,7 @@ export default function LoginScreen({ navigation }) {
             <TextInput
               style={styles.input}
               placeholder="Email"
-              placeholderTextColor={colors.textSecondary}
+              placeholderTextColor={colors.neutral[500]}
               value={email}
               onChangeText={setEmail}
               autoCapitalize="none"
@@ -64,7 +74,7 @@ export default function LoginScreen({ navigation }) {
             <TextInput
               style={styles.input}
               placeholder="Password"
-              placeholderTextColor={colors.textSecondary}
+              placeholderTextColor={colors.neutral[500]}
               value={password}
               onChangeText={setPassword}
               secureTextEntry
@@ -72,29 +82,28 @@ export default function LoginScreen({ navigation }) {
               editable={!loading}
             />
 
-            {/* Login Button */}
-            <TouchableOpacity
-              style={[styles.button, loading && styles.buttonDisabled]}
+            {/* Login Button - Using CalAI Design System */}
+            <Button
+              variant="primary"
+              size="large"
               onPress={handleLogin}
               disabled={loading}
+              loading={loading}
+              style={styles.loginButton}
             >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.buttonText}>Log In</Text>
-              )}
-            </TouchableOpacity>
+              Log In
+            </Button>
 
-            {/* Sign Up Link */}
-            <TouchableOpacity
-              style={styles.linkContainer}
+            {/* Sign Up Link - Using Ghost Variant */}
+            <Button
+              variant="ghost"
+              size="medium"
               onPress={() => navigation.navigate('Signup')}
               disabled={loading}
+              style={styles.signupButton}
             >
-              <Text style={styles.linkText}>
-                Don't have an account? <Text style={styles.linkBold}>Sign Up</Text>
-              </Text>
-            </TouchableOpacity>
+              Don't have an account? Sign Up
+            </Button>
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -112,63 +121,41 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing[6],
     justifyContent: 'center',
   },
   header: {
     alignItems: 'center',
-    marginBottom: spacing.xxl,
+    marginBottom: spacing[10],
   },
   title: {
+    ...typography.display,
     fontSize: 48,
-    fontWeight: '700',
     color: colors.primary,
-    marginBottom: spacing.sm,
+    marginBottom: spacing[2],
   },
   subtitle: {
-    fontSize: 18,
-    color: colors.textSecondary,
-    fontWeight: '400',
+    ...typography.body,
+    color: colors.neutral[500],
   },
   form: {
     width: '100%',
   },
   input: {
-    backgroundColor: colors.inputBackground,
+    backgroundColor: colors.neutral[50],
     borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[4],
     fontSize: 16,
-    color: colors.text,
-    marginBottom: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  button: {
-    backgroundColor: colors.primary,
-    borderRadius: borderRadius.md,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-    marginTop: spacing.md,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  linkContainer: {
-    marginTop: spacing.lg,
-    alignItems: 'center',
-  },
-  linkText: {
-    fontSize: 16,
-    color: colors.textSecondary,
-  },
-  linkBold: {
     color: colors.primary,
-    fontWeight: '600',
+    marginBottom: spacing[4],
+    borderWidth: 1,
+    borderColor: colors.neutral[200],
+  },
+  loginButton: {
+    marginTop: spacing[4],
+  },
+  signupButton: {
+    marginTop: spacing[5],
   },
 });

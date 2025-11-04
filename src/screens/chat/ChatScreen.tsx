@@ -7,6 +7,7 @@ import { colors, spacing, typography, borderRadius, shadows } from '../../consta
 import { generateAPIUrl } from '../../utils';
 import { useAuth } from '../../contexts/AuthContext';
 import { saveMessage, loadChatHistory } from '../../services/chatService';
+import { Avatar, IconButton } from '../../components';
 
 const { width } = Dimensions.get('window');
 
@@ -476,9 +477,11 @@ export default function ChatScreen() {
       >
         {/* Avatar for Ava */}
         {!isUser && (
-          <View style={styles.avatarContainer}>
-            <Text style={styles.avatarText}>🤖</Text>
-          </View>
+          <Avatar
+            initials="AI"
+            size="md"
+            backgroundColor={colors.primary}
+          />
         )}
         
         {/* Message Bubble */}
@@ -553,9 +556,12 @@ export default function ChatScreen() {
           <View style={styles.header}>
             <View style={styles.headerContent}>
               <View style={styles.headerLeft}>
-                <View style={styles.headerAvatarContainer}>
-                  <Text style={styles.headerAvatarText}>🤖</Text>
-                </View>
+                <Avatar
+                  initials="AI"
+                  size="md"
+                  backgroundColor={colors.secondary}
+                  style={styles.headerAvatar}
+                />
                 <View style={styles.headerTextContainer}>
                   <Text style={styles.headerTitle}>Ava</Text>
                   <Text style={styles.headerSubtitle}>Your AI Fitness Coach</Text>
@@ -589,9 +595,11 @@ export default function ChatScreen() {
           {/* Typing Indicator */}
           {isTyping && (
             <Animated.View style={[styles.messageRow, styles.assistantMessageRow]}>
-              <View style={styles.avatarContainer}>
-                <Text style={styles.avatarText}>🤖</Text>
-              </View>
+              <Avatar
+                initials="AI"
+                size="md"
+                backgroundColor={colors.primary}
+              />
               <View style={[styles.messageBubble, styles.assistantMessageBubble, styles.typingBubble]}>
                 <View style={styles.typingIndicator}>
                   <View style={[styles.typingDot, { animationDelay: 0 }]} />
@@ -644,7 +652,7 @@ export default function ChatScreen() {
                     isTranscribing ? "Transcribing..." :
                     "Message Ava..."
                   }
-                  placeholderTextColor={colors.textSecondary}
+                  placeholderTextColor={colors.neutral[500]}
                   value={input}
                   onChangeText={setInput}
                   multiline
@@ -746,9 +754,9 @@ export default function ChatScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f0f2f5', // WhatsApp-like background
+    backgroundColor: colors.neutral[100],
   },
-  
+
   // Modern Header Styles
   headerContainer: {
     backgroundColor: colors.primary,
@@ -756,8 +764,8 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   header: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingHorizontal: spacing[6],
+    paddingVertical: spacing[4],
   },
   headerContent: {
     flexDirection: 'row',
@@ -769,17 +777,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
   },
-  headerAvatarContainer: {
-    width: 45,
-    height: 45,
-    borderRadius: 22.5,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.md,
-  },
-  headerAvatarText: {
-    fontSize: 24,
+  headerAvatar: {
+    marginRight: spacing[4],
   },
   headerTextContainer: {
     flex: 1,
@@ -798,8 +797,8 @@ const styles = StyleSheet.create({
   },
   testButton: {
     backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[2],
     borderRadius: 20,
     minWidth: 40,
     alignItems: 'center',
@@ -807,25 +806,25 @@ const styles = StyleSheet.create({
   testButtonText: {
     fontSize: 16,
   },
-  
+
   // Chat Area Styles
   keyboardAvoidingView: {
     flex: 1,
   },
   messagesContainer: {
     flex: 1,
-    backgroundColor: '#f0f2f5',
+    backgroundColor: colors.neutral[100],
   },
   messagesContent: {
-    padding: spacing.md,
-    paddingBottom: spacing.xl,
+    padding: spacing[4],
+    paddingBottom: spacing[8],
   },
   
   // Message Row Layout
   messageRow: {
     flexDirection: 'row',
-    marginBottom: spacing.md,
-    paddingHorizontal: spacing.xs,
+    marginBottom: spacing[4],
+    paddingHorizontal: spacing[1],
   },
   userMessageRow: {
     justifyContent: 'flex-end',
@@ -834,39 +833,24 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   
-  // Avatar Styles
-  avatarContainer: {
-    width: 35,
-    height: 35,
-    borderRadius: 17.5,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.sm,
-    marginTop: 2,
-  },
-  avatarText: {
-    fontSize: 18,
-  },
-  
   // Message Bubble Styles
   messageBubble: {
     maxWidth: width * 0.75,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3],
     borderRadius: 18,
     ...shadows.sm,
     elevation: 2,
   },
   userMessageBubble: {
     backgroundColor: colors.primary,
-    marginLeft: spacing.lg,
+    marginLeft: spacing[6],
   },
   assistantMessageBubble: {
     backgroundColor: colors.background,
-    marginRight: spacing.lg,
+    marginRight: spacing[6],
   },
-  
+
   // Speech Bubble Tails
   userBubbleTail: {
     // Add slight shadow for depth
@@ -877,7 +861,7 @@ const styles = StyleSheet.create({
   },
   assistantBubbleTail: {
     borderWidth: 1,
-    borderColor: '#e5e5ea',
+    borderColor: colors.neutral[200],
   },
   
   // Message Text Styles
@@ -885,15 +869,15 @@ const styles = StyleSheet.create({
     ...typography.body,
     lineHeight: 22,
     fontSize: 16,
-    marginBottom: spacing.xs,
+    marginBottom: spacing[1],
   },
   userMessageText: {
     color: colors.background,
   },
   assistantMessageText: {
-    color: colors.text,
+    color: colors.primary,
   },
-  
+
   // Timestamp Styles
   timestampText: {
     ...typography.small,
@@ -906,7 +890,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   assistantTimestampText: {
-    color: colors.textSecondary,
+    color: colors.neutral[500],
     textAlign: 'left',
   },
   
@@ -917,25 +901,25 @@ const styles = StyleSheet.create({
   
   // Typing Indicator Styles
   typingBubble: {
-    paddingVertical: spacing.md,
+    paddingVertical: spacing[4],
   },
   typingIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.xs,
+    marginBottom: spacing[1],
   },
   typingDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: colors.textSecondary,
+    backgroundColor: colors.neutral[500],
     marginRight: 4,
     // Add subtle animation (would need Animated.View in real implementation)
     opacity: 0.6,
   },
   typingText: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: colors.neutral[500],
     fontStyle: 'italic',
     fontSize: 13,
   },
@@ -947,25 +931,25 @@ const styles = StyleSheet.create({
   inputContainer: {
     backgroundColor: colors.background,
     borderTopWidth: 1,
-    borderTopColor: '#e5e5ea',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    borderTopColor: colors.neutral[200],
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3],
   },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     minHeight: 44,
   },
-  
+
   // Attachment Button
   attachButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#f0f2f5',
+    backgroundColor: colors.neutral[100],
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.sm,
+    marginRight: spacing[2],
     marginBottom: 4,
   },
   attachButtonText: {
@@ -978,23 +962,23 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
     borderWidth: 1,
-    borderColor: '#e5e5ea',
+    borderColor: colors.neutral[200],
     borderRadius: 22,
-    paddingHorizontal: spacing.md,
-    paddingVertical: Platform.OS === 'ios' ? spacing.sm : 2,
-    marginRight: spacing.sm,
+    paddingHorizontal: spacing[4],
+    paddingVertical: Platform.OS === 'ios' ? spacing[3] : 2,
+    marginRight: spacing[2],
     minHeight: 44,
     maxHeight: 120,
     justifyContent: 'center',
   },
   textInput: {
     ...typography.body,
-    color: colors.text,
+    color: colors.primary,
     fontSize: 16,
     lineHeight: 20,
     textAlignVertical: 'center',
   },
-  
+
   // Modern Send Button
   sendButtonModern: {
     width: 36,
@@ -1008,7 +992,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   sendButtonDisabled: {
-    backgroundColor: '#c7c7cc',
+    backgroundColor: colors.neutral[400],
     opacity: 0.6,
   },
   sendButtonIcon: {
@@ -1046,9 +1030,9 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(255, 68, 68, 0.95)',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    backgroundColor: 'rgba(239, 68, 68, 0.95)',
+    paddingHorizontal: spacing[6],
+    paddingVertical: spacing[4],
     zIndex: 1000,
   },
   recordingContent: {
@@ -1065,13 +1049,13 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
     borderRadius: 6,
-    marginRight: spacing.sm,
+    marginRight: spacing[2],
   },
   recordingText: {
     ...typography.body,
     color: colors.background,
     fontWeight: '600',
-    marginRight: spacing.md,
+    marginRight: spacing[4],
   },
   recordingDuration: {
     ...typography.body,
@@ -1103,30 +1087,30 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing[6],
+    paddingHorizontal: spacing[8],
     minHeight: 200,
     ...shadows.sm,
   },
   modalHandle: {
     width: 40,
     height: 4,
-    backgroundColor: '#c7c7cc',
+    backgroundColor: colors.neutral[400],
     borderRadius: 2,
     alignSelf: 'center',
-    marginBottom: spacing.lg,
+    marginBottom: spacing[6],
   },
   modalTitle: {
     ...typography.h3,
-    color: colors.text,
+    color: colors.primary,
     textAlign: 'center',
-    marginBottom: spacing.xl,
+    marginBottom: spacing[8],
     fontWeight: '600',
   },
   attachmentOptions: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing[4],
   },
   attachmentOption: {
     alignItems: 'center',
@@ -1138,7 +1122,7 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.sm,
+    marginBottom: spacing[2],
     ...shadows.sm,
     elevation: 2,
   },
@@ -1147,7 +1131,7 @@ const styles = StyleSheet.create({
   },
   attachmentLabel: {
     ...typography.caption,
-    color: colors.text,
+    color: colors.primary,
     textAlign: 'center',
     fontWeight: '500',
   },
@@ -1157,14 +1141,14 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: spacing.xl,
+    padding: spacing[8],
     backgroundColor: colors.background,
   },
   loadingText: {
     ...typography.body,
-    color: colors.textSecondary,
+    color: colors.neutral[500],
     textAlign: 'center',
-    marginTop: spacing.md,
+    marginTop: spacing[4],
   },
 
   // Error Styles
@@ -1172,25 +1156,25 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: spacing.xl,
+    padding: spacing[8],
     backgroundColor: colors.background,
   },
   errorText: {
     ...typography.h3,
-    color: colors.error,
+    color: colors.status.error,
     textAlign: 'center',
-    marginBottom: spacing.md,
+    marginBottom: spacing[4],
   },
   errorSubtext: {
     ...typography.body,
-    color: colors.textSecondary,
+    color: colors.neutral[500],
     textAlign: 'center',
-    marginBottom: spacing.lg,
+    marginBottom: spacing[6],
   },
   retryButton: {
     backgroundColor: colors.primary,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingHorizontal: spacing[6],
+    paddingVertical: spacing[4],
     borderRadius: borderRadius.md,
     ...shadows.sm,
   },
