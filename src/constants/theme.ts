@@ -1,23 +1,23 @@
 export const colors = {
   // OpenAI-inspired clean palette
-  primary: '#10A37F',
-  secondary: '#1A73E8',
-  background: '#FFFFFF',
-  surface: '#F9FAFB',
-  text: '#202123',
-  textSecondary: '#6E6E80',
-  border: '#E5E5E5',
-  
+  primary: "#10A37F",
+  secondary: "#1A73E8",
+  background: "#FFFFFF",
+  surface: "#F9FAFB",
+  text: "#202123",
+  textSecondary: "#6E6E80",
+  border: "#E5E5E5",
+
   // Duolingo-inspired playful accents
-  success: '#58CC02',
-  warning: '#FFC800',
-  error: '#FF4B4B',
-  streak: '#FF9600',
-  
+  success: "#58CC02",
+  warning: "#FFC800",
+  error: "#FF4B4B",
+  streak: "#FF9600",
+
   // Additional colors for fitness app
-  cardBackground: '#FFFFFF',
-  inputBackground: '#F7F8FA',
-  divider: '#E5E7EB',
+  cardBackground: "#FFFFFF",
+  inputBackground: "#F7F8FA",
+  divider: "#E5E7EB",
 };
 
 export const spacing = {
@@ -30,34 +30,34 @@ export const spacing = {
 };
 
 export const typography = {
-  h1: { 
-    fontSize: 32, 
-    fontWeight: '700' as const,
+  h1: {
+    fontSize: 32,
+    fontWeight: "700" as const,
     lineHeight: 40,
   },
-  h2: { 
-    fontSize: 24, 
-    fontWeight: '600' as const,
+  h2: {
+    fontSize: 24,
+    fontWeight: "600" as const,
     lineHeight: 32,
   },
-  h3: { 
-    fontSize: 20, 
-    fontWeight: '600' as const,
+  h3: {
+    fontSize: 20,
+    fontWeight: "600" as const,
     lineHeight: 28,
   },
-  body: { 
-    fontSize: 16, 
-    fontWeight: '400' as const,
+  body: {
+    fontSize: 16,
+    fontWeight: "400" as const,
     lineHeight: 24,
   },
-  caption: { 
-    fontSize: 14, 
-    fontWeight: '400' as const,
+  caption: {
+    fontSize: 14,
+    fontWeight: "400" as const,
     lineHeight: 20,
   },
   small: {
     fontSize: 12,
-    fontWeight: '400' as const,
+    fontWeight: "400" as const,
     lineHeight: 16,
   },
 };
@@ -73,7 +73,7 @@ export const borderRadius = {
 
 export const shadows = {
   sm: {
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: 1,
@@ -83,7 +83,7 @@ export const shadows = {
     elevation: 2,
   },
   md: {
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: 4,
@@ -93,7 +93,7 @@ export const shadows = {
     elevation: 4,
   },
   lg: {
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: 8,
