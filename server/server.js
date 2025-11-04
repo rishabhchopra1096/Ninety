@@ -16,8 +16,23 @@ const openaiClient = new OpenAI({
 });
 
 // Configure multer for file uploads
+// Configure multer with diskStorage to preserve file extensions
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, 'uploads/');
+  },
+  filename: (req, file, cb) => {
+    // Extract extension from original filename
+    const ext = path.extname(file.originalname);
+    // Generate unique filename with extension preserved
+    const uniqueName = `${Date.now()}-${Math.random().toString(36).substring(7)}${ext}`;
+    console.log('💾 Saving file as:', uniqueName);
+    cb(null, uniqueName);
+  }
+});
+
 const upload = multer({
-  dest: 'uploads/', // temporary directory for uploaded files
+  storage: storage,  // Use diskStorage instead of dest
   limits: {
     fileSize: 25 * 1024 * 1024, // 25MB limit (Whisper's max)
   },

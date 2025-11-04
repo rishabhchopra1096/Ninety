@@ -1,7 +1,7 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform, TextInput, ScrollView, KeyboardAvoidingView, Animated, Dimensions, Modal, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAudioRecorder, AudioModule, RecordingPresets } from 'expo-audio';
+import { useAudioRecorder, AudioModule, RecordingPresets, setAudioModeAsync } from 'expo-audio';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing, typography, borderRadius, shadows } from '../../constants/theme';
 import { generateAPIUrl } from '../../utils';
@@ -30,14 +30,19 @@ export default function ChatScreen() {
   // Voice recording state
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [recordingDuration, setRecordingDuration] = useState(0);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const recordingTimer = useRef<NodeJS.Timeout | null>(null);
 
   // Attachment modal state
   const [showAttachmentModal, setShowAttachmentModal] = useState(false);
 
-  // Log the API URL being used
-  const apiUrl = generateAPIUrl('/api/chat');
-  console.log('🔗 Chat API URL:', apiUrl);
+  // Log the API URL being used (memoized to prevent re-renders)
+  const apiUrl = useMemo(() => {
+    const url = generateAPIUrl('/api/chat');
+    console.log('🔗 Chat API URL:', url);
+    return url;
+  }, []);
 
   // Load chat history on mount
   useEffect(() => {
@@ -87,6 +92,25 @@ export default function ChatScreen() {
 
     initializeChat();
   }, [user]);
+
+  // Initialize audio mode for recording (iOS requirement)
+  useEffect(() => {
+    const setupAudioMode = async () => {
+      try {
+        console.log('🔊 Configuring audio mode for recording...');
+        await setAudioModeAsync({
+          allowsRecording: true,
+          playsInSilentMode: true,
+          interruptionMode: 'duckOthers',
+        });
+        console.log('✅ Audio mode configured successfully');
+      } catch (error) {
+        console.error('❌ Failed to configure audio mode:', error);
+      }
+    };
+
+    setupAudioMode();
+  }, []); // Run once on mount
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -241,16 +265,23 @@ export default function ChatScreen() {
         return;
       }
 
-      console.log('✅ Permission granted, starting recording...');
-      await audioRecorder.record();
+      console.log('✅ Permission granted, preparing recorder...');
+
+      // CRITICAL: Prepare the recorder before recording
+      await audioRecorder.prepareToRecordAsync();
+      console.log('✅ Recorder prepared, starting recording...');
+
+      // Start recording (synchronous - no await needed)
+      audioRecorder.record();
+      console.log('✅ Recording started successfully');
+
+      setIsRecording(true);
       setRecordingDuration(0);
 
       // Start timer
       recordingTimer.current = setInterval(() => {
         setRecordingDuration(prev => prev + 1);
       }, 1000);
-
-      console.log('✅ Recording started successfully');
     } catch (err) {
       console.error('❌ Failed to start recording:', err);
       Alert.alert('Error', 'Failed to start recording. Please try again.');
@@ -258,47 +289,55 @@ export default function ChatScreen() {
   };
 
   const stopRecording = async () => {
-    if (!audioRecorder?.isRecording) return;
+    if (!isRecording) return;
 
     try {
       console.log('🛑 Stopping recording...');
+      setIsRecording(false);
 
       if (recordingTimer.current) {
         clearInterval(recordingTimer.current);
         recordingTimer.current = null;
       }
 
-      const uri = await audioRecorder.stop();
-      console.log('🎵 Recording saved to:', uri);
+      // Stop recording (returns void)
+      await audioRecorder.stop();
+      console.log('✅ Recording stopped');
 
-      // Add a temporary message showing that we're processing
-      const processingMessage: ChatMessage = {
-        id: `processing_${Date.now()}`,
-        role: 'user',
-        content: `🎵 Processing voice message (${recordingDuration}s)...`,
-        timestamp: new Date(),
-      };
+      // Access URI from the recorder property, not return value
+      const recordingUri = audioRecorder.uri;
+      console.log('🎵 Recording URI:', recordingUri);
 
-      setMessages(prevMessages => [...prevMessages, processingMessage]);
+      if (!recordingUri) {
+        console.error('❌ No recording URI available');
+        setRecordingDuration(0);
+        setIsTranscribing(false);
+        setInput('');
+        Alert.alert('Error', 'Recording failed - no audio file created');
+        return;
+      }
+
+      // Set transcribing state and show placeholder in input
+      setIsTranscribing(true);
+      setInput('Transcribing...');
       setRecordingDuration(0);
 
       // Send to transcription API
-      if (uri) {
-        await transcribeAudio(uri, processingMessage.id);
-      }
+      await transcribeAudio(recordingUri);
 
     } catch (error) {
       console.error('❌ Failed to stop recording:', error);
       Alert.alert('Error', 'Failed to save recording. Please try again.');
       setRecordingDuration(0);
+      setIsTranscribing(false);
+      setInput('');
     }
   };
 
   // Transcribe audio using OpenAI Whisper
-  const transcribeAudio = async (audioUri: string, processingMessageId: string) => {
+  const transcribeAudio = async (audioUri: string) => {
     try {
       console.log('🎙️ Starting transcription for:', audioUri);
-      setIsTyping(true);
 
       // Create form data for the audio file
       const formData = new FormData();
@@ -320,59 +359,32 @@ export default function ChatScreen() {
       });
 
       if (!transcriptionResponse.ok) {
-        throw new Error(`Transcription API error: ${transcriptionResponse.status}`);
+        // Get full error response to see what's failing on server
+        const errorText = await transcriptionResponse.text();
+        console.error('❌ Server error response:', errorText);
+        console.error('❌ Status code:', transcriptionResponse.status);
+        console.error('❌ Status text:', transcriptionResponse.statusText);
+        throw new Error(`Transcription API error: ${transcriptionResponse.status} - ${errorText}`);
       }
 
       const transcriptionData = await transcriptionResponse.json();
       console.log('📝 Transcription received:', transcriptionData.transcription);
 
-      // Remove the processing message and add the transcribed message
-      setMessages(prevMessages => {
-        const updatedMessages = prevMessages.filter(msg => msg.id !== processingMessageId);
-        
-        const transcribedMessage: ChatMessage = {
-          id: `voice_${Date.now()}`,
-          role: 'user',
-          content: transcriptionData.transcription,
-          timestamp: new Date(),
-        };
-        
-        return [...updatedMessages, transcribedMessage];
-      });
-
-      // Send the transcribed text to Ava for response
-      const userMessage: ChatMessage = {
-        id: `voice_${Date.now()}`,
-        role: 'user',
-        content: transcriptionData.transcription,
-        timestamp: new Date(),
-      };
-
-      await sendToAPI(userMessage);
+      // Put transcribed text in input field for user to review/edit
+      setInput(transcriptionData.transcription);
 
     } catch (error) {
       console.error('❌ Transcription error:', error);
-      
-      // Remove processing message and show error
-      setMessages(prevMessages => {
-        const updatedMessages = prevMessages.filter(msg => msg.id !== processingMessageId);
-        
-        const errorMessage: ChatMessage = {
-          id: `error_${Date.now()}`,
-          role: 'user',
-          content: '❌ Failed to transcribe voice message. Please try again or type your message.',
-          timestamp: new Date(),
-        };
-        
-        return [...updatedMessages, errorMessage];
-      });
-      
+
+      // Clear input field on error
+      setInput('');
+
       Alert.alert(
-        'Transcription Failed', 
+        'Transcription Failed',
         'Could not process your voice message. Please try again or type your message instead.'
       );
     } finally {
-      setIsTyping(false);
+      setIsTranscribing(false);
     }
   };
 
@@ -595,7 +607,7 @@ export default function ChatScreen() {
         {/* Modern Input Bar */}
         <SafeAreaView style={styles.inputSafeArea}>
           {/* Voice Recording Overlay */}
-          {audioRecorder?.isRecording && (
+          {isRecording && (
             <View style={styles.recordingOverlay}>
               <View style={styles.recordingContent}>
                 <View style={styles.recordingIndicator}>
@@ -618,7 +630,7 @@ export default function ChatScreen() {
               <TouchableOpacity
                 style={styles.attachButton}
                 onPress={() => setShowAttachmentModal(true)}
-                disabled={audioRecorder?.isRecording}
+                disabled={isRecording}
               >
                 <Text style={styles.attachButtonText}>📎</Text>
               </TouchableOpacity>
@@ -627,13 +639,17 @@ export default function ChatScreen() {
               <View style={styles.inputWrapper}>
                 <TextInput
                   style={styles.textInput}
-                  placeholder={audioRecorder?.isRecording ? "Recording..." : "Message Ava..."}
+                  placeholder={
+                    isRecording ? "Recording..." :
+                    isTranscribing ? "Transcribing..." :
+                    "Message Ava..."
+                  }
                   placeholderTextColor={colors.textSecondary}
                   value={input}
                   onChangeText={setInput}
                   multiline
                   maxLength={500}
-                  editable={!isTyping && !audioRecorder?.isRecording}
+                  editable={!isTyping && !isRecording && !isTranscribing}
                   returnKeyType="send"
                   onSubmitEditing={handleSend}
                 />
@@ -644,27 +660,27 @@ export default function ChatScreen() {
                 <TouchableOpacity
                   style={[
                     styles.sendButtonModern,
-                    (!input.trim() || isTyping) && styles.sendButtonDisabled
+                    (!input.trim() || isTyping || isTranscribing) && styles.sendButtonDisabled
                   ]}
                   onPress={handleSend}
-                  disabled={!input.trim() || isTyping || audioRecorder?.isRecording}
+                  disabled={!input.trim() || isTyping || isRecording || isTranscribing}
                 >
                   <Text style={styles.sendButtonIcon}>
-                    {isTyping ? "⏳" : "➤"}
+                    {isTyping || isTranscribing ? "⏳" : "➤"}
                   </Text>
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity
                   style={[
                     styles.voiceButton,
-                    audioRecorder?.isRecording && styles.voiceButtonRecording
+                    isRecording && styles.voiceButtonRecording
                   ]}
-                  onPress={audioRecorder?.isRecording ? stopRecording : startRecording}
-                  disabled={isTyping}
+                  onPress={isRecording ? stopRecording : startRecording}
+                  disabled={isTyping || isTranscribing}
                 >
                   <Text style={[
                     styles.voiceButtonIcon,
-                    audioRecorder?.isRecording && styles.voiceButtonIconRecording
+                    isRecording && styles.voiceButtonIconRecording
                   ]}>
                     🎙️
                   </Text>
