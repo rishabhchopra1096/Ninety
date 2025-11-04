@@ -4,7 +4,8 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const { openai } = require('@ai-sdk/openai');
-const { generateText } = require('ai');
+const { generateText, tool } = require('ai');
+const { z } = require('zod');
 const OpenAI = require('openai');
 
 const app = express();
@@ -237,117 +238,130 @@ app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
 // Mock database for demo (in production, this would be Firestore)
 const mockMealsDB = {};
 
-// Define tools for function calling
+// Define tools for function calling (AI SDK v5 syntax with Zod)
 const tools = {
-  logMeal: {
+  logMeal: tool({
     description: 'Log a new meal to the user\'s food diary. Use when user mentions eating food.',
-    parameters: {
-      type: 'object',
-      properties: {
-        mealType: {
-          type: 'string',
-          enum: ['breakfast', 'lunch', 'dinner', 'snack'],
-          description: 'Type of meal',
-        },
-        foods: {
-          type: 'array',
-          description: 'List of foods in the meal',
-          items: {
-            type: 'object',
-            properties: {
-              name: { type: 'string', description: 'Food name' },
-              quantity: { type: 'string', description: 'Quantity with unit (e.g., "2 eggs", "1 cup")' },
-              calories: { type: 'number', description: 'Calories' },
-              protein: { type: 'number', description: 'Protein in grams' },
-              carbs: { type: 'number', description: 'Carbs in grams' },
-              fats: { type: 'number', description: 'Fats in grams' },
-              fiber: { type: 'number', description: 'Fiber in grams' },
-            },
-            required: ['name', 'quantity', 'calories', 'protein', 'carbs', 'fats', 'fiber'],
-          },
-        },
-        timestamp: {
-          type: 'string',
-          description: 'ISO timestamp of when meal was eaten',
-        },
-        notes: {
-          type: 'string',
-          description: 'Optional notes about the meal',
-        },
-      },
-      required: ['mealType', 'foods', 'timestamp'],
-    },
-  },
+    inputSchema: z.object({
+      mealType: z.enum(['breakfast', 'lunch', 'dinner', 'snack']).describe('Type of meal'),
+      foods: z.array(z.object({
+        name: z.string().describe('Food name'),
+        quantity: z.string().describe('Quantity with unit (e.g., "2 eggs", "1 cup")'),
+        calories: z.number().describe('Calories'),
+        protein: z.number().describe('Protein in grams'),
+        carbs: z.number().describe('Carbs in grams'),
+        fats: z.number().describe('Fats in grams'),
+        fiber: z.number().describe('Fiber in grams'),
+      })).describe('List of foods in the meal'),
+      timestamp: z.string().describe('ISO timestamp of when meal was eaten'),
+      notes: z.string().optional().describe('Optional notes about the meal'),
+    }),
+    execute: async ({ mealType, foods, timestamp, notes }, { abortSignal }) => {
+      console.log('🔧 Executing logMeal tool');
 
-  findRecentMeals: {
+      // Extract userId from context (we'll need to pass this through)
+      // For now, using a global variable set in the request handler
+      const userId = global.currentUserId || 'anonymous';
+
+      const mealId = `meal_${Date.now()}`;
+      if (!mockMealsDB[userId]) mockMealsDB[userId] = [];
+      mockMealsDB[userId].push({ id: mealId, mealType, foods, timestamp, notes });
+      console.log('✅ Meal logged:', mealId);
+
+      return { success: true, mealId, message: 'Meal logged successfully' };
+    },
+  }),
+
+  findRecentMeals: tool({
     description: 'Find recent meals for context. Use when user references a previous meal or when editing.',
-    parameters: {
-      type: 'object',
-      properties: {
-        mealType: {
-          type: 'string',
-          enum: ['breakfast', 'lunch', 'dinner', 'snack'],
-          description: 'Filter by meal type',
-        },
-        containsFood: {
-          type: 'string',
-          description: 'Search for meals containing this food item',
-        },
-        limit: {
-          type: 'number',
-          description: 'Maximum number of meals to return (default: 10)',
-        },
-      },
-    },
-  },
+    inputSchema: z.object({
+      mealType: z.enum(['breakfast', 'lunch', 'dinner', 'snack']).optional().describe('Filter by meal type'),
+      containsFood: z.string().optional().describe('Search for meals containing this food item'),
+      limit: z.number().optional().describe('Maximum number of meals to return (default: 10)'),
+    }),
+    execute: async ({ mealType, containsFood, limit }, { abortSignal }) => {
+      console.log('🔧 Executing findRecentMeals tool');
 
-  updateMeal: {
+      const userId = global.currentUserId || 'anonymous';
+      const userMeals = mockMealsDB[userId] || [];
+
+      const filtered = userMeals.filter(meal => {
+        if (mealType && meal.mealType !== mealType) return false;
+        if (containsFood) {
+          const hasFood = meal.foods.some(f =>
+            f.name.toLowerCase().includes(containsFood.toLowerCase())
+          );
+          if (!hasFood) return false;
+        }
+        return true;
+      }).slice(0, limit || 10);
+
+      console.log(`✅ Found ${filtered.length} recent meals`);
+      return { meals: filtered };
+    },
+  }),
+
+  updateMeal: tool({
     description: 'Update an existing meal. Use when user corrects or adjusts a previous meal.',
-    parameters: {
-      type: 'object',
-      properties: {
-        mealId: {
-          type: 'string',
-          description: 'The meal ID to update (from findRecentMeals)',
-        },
-        foods: {
-          type: 'array',
-          description: 'Updated foods array',
-          items: {
-            type: 'object',
-            properties: {
-              name: { type: 'string' },
-              quantity: { type: 'string' },
-              calories: { type: 'number' },
-              protein: { type: 'number' },
-              carbs: { type: 'number' },
-              fats: { type: 'number' },
-              fiber: { type: 'number' },
-            },
-          },
-        },
-        notes: {
-          type: 'string',
-          description: 'Updated notes',
-        },
-      },
-      required: ['mealId'],
-    },
-  },
+    inputSchema: z.object({
+      mealId: z.string().describe('The meal ID to update (from findRecentMeals)'),
+      foods: z.array(z.object({
+        name: z.string(),
+        quantity: z.string(),
+        calories: z.number(),
+        protein: z.number(),
+        carbs: z.number(),
+        fats: z.number(),
+        fiber: z.number(),
+      })).optional().describe('Updated foods array'),
+      notes: z.string().optional().describe('Updated notes'),
+    }),
+    execute: async ({ mealId, foods, notes }, { abortSignal }) => {
+      console.log('🔧 Executing updateMeal tool');
 
-  getDailySummary: {
-    description: 'Get daily calorie summary and meals for a specific date.',
-    parameters: {
-      type: 'object',
-      properties: {
-        date: {
-          type: 'string',
-          description: 'Date in YYYY-MM-DD format',
-        },
-      },
-      required: ['date'],
+      const userId = global.currentUserId || 'anonymous';
+      const userMealsList = mockMealsDB[userId] || [];
+      const mealIndex = userMealsList.findIndex(m => m.id === mealId);
+
+      if (mealIndex >= 0) {
+        const updates = {};
+        if (foods) updates.foods = foods;
+        if (notes) updates.notes = notes;
+
+        userMealsList[mealIndex] = { ...userMealsList[mealIndex], ...updates };
+        console.log('✅ Meal updated:', mealId);
+        return { success: true, message: 'Meal updated successfully' };
+      }
+
+      return { success: false, message: 'Meal not found' };
     },
-  },
+  }),
+
+  getDailySummary: tool({
+    description: 'Get daily calorie summary and meals for a specific date.',
+    inputSchema: z.object({
+      date: z.string().describe('Date in YYYY-MM-DD format'),
+    }),
+    execute: async ({ date }, { abortSignal }) => {
+      console.log('🔧 Executing getDailySummary tool');
+
+      const userId = global.currentUserId || 'anonymous';
+      const todayMeals = mockMealsDB[userId] || [];
+
+      const total = todayMeals.reduce((sum, m) => {
+        const mealCal = m.foods.reduce((s, f) => s + f.calories, 0);
+        return sum + mealCal;
+      }, 0);
+
+      console.log('✅ Daily summary:', total, 'calories');
+      return {
+        totalCalories: total,
+        calorieTarget: 2400,
+        progress: total / 2400,
+        mealsCount: todayMeals.length,
+      };
+    },
+  }),
 };
 
 // Chat endpoint with function calling
@@ -376,6 +390,9 @@ app.post('/api/chat', async (req, res) => {
       });
     }
 
+    // Set global userId for tool execution (AI SDK v5 tools need access to context)
+    global.currentUserId = userId;
+
     const result = await generateText({
       model: openai('gpt-4o-mini'),
       system: systemPromptWithContext,
@@ -386,67 +403,7 @@ app.post('/api/chat', async (req, res) => {
       tools,
       maxSteps: 5, // Allow up to 5 tool call iterations
       toolChoice: 'auto', // Let AI decide when to use tools
-      // Tool execution happens automatically by AI SDK
-      execute: async (tool, args) => {
-        console.log(`🔧 Executing tool: ${tool.name}`, args);
-
-        // In production, these would call Firestore via nutritionService
-        // For now, we'll mock the responses
-        switch (tool.name) {
-          case 'logMeal':
-            // Mock meal logging
-            const mealId = `meal_${Date.now()}`;
-            if (!mockMealsDB[userId]) mockMealsDB[userId] = [];
-            mockMealsDB[userId].push({ id: mealId, ...args });
-            console.log('✅ Meal logged:', mealId);
-            return { success: true, mealId, message: 'Meal logged successfully' };
-
-          case 'findRecentMeals':
-            // Return mock meals or empty array
-            const userMeals = mockMealsDB[userId] || [];
-            const filtered = userMeals.filter(meal => {
-              if (args.mealType && meal.mealType !== args.mealType) return false;
-              if (args.containsFood) {
-                const hasFood = meal.foods.some(f =>
-                  f.name.toLowerCase().includes(args.containsFood.toLowerCase())
-                );
-                if (!hasFood) return false;
-              }
-              return true;
-            }).slice(0, args.limit || 10);
-            console.log(`✅ Found ${filtered.length} recent meals`);
-            return { meals: filtered };
-
-          case 'updateMeal':
-            // Mock meal update
-            const userMealsList = mockMealsDB[userId] || [];
-            const mealIndex = userMealsList.findIndex(m => m.id === args.mealId);
-            if (mealIndex >= 0) {
-              userMealsList[mealIndex] = { ...userMealsList[mealIndex], ...args };
-              console.log('✅ Meal updated:', args.mealId);
-              return { success: true, message: 'Meal updated successfully' };
-            }
-            return { success: false, message: 'Meal not found' };
-
-          case 'getDailySummary':
-            // Mock daily summary
-            const todayMeals = mockMealsDB[userId] || [];
-            const total = todayMeals.reduce((sum, m) => {
-              const mealCal = m.foods.reduce((s, f) => s + f.calories, 0);
-              return sum + mealCal;
-            }, 0);
-            console.log('✅ Daily summary:', total, 'calories');
-            return {
-              totalCalories: total,
-              calorieTarget: 2400,
-              progress: total / 2400,
-              mealsCount: todayMeals.length,
-            };
-
-          default:
-            return { error: 'Unknown tool' };
-        }
-      },
+      // In v5, tools execute automatically using their built-in execute functions
     });
 
     console.log('✅ AI request successful');
