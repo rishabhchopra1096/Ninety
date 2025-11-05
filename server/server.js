@@ -441,7 +441,7 @@ const tools = {
 
       try {
         const mealsRef = db.collection('nutrition').doc(userId).collection('meals');
-        let query = mealsRef.orderBy('timestamp', 'desc').limit(limit || 10);
+        let query = mealsRef.orderBy('createdAt', 'desc').limit(limit || 10);
 
         const snapshot = await query.get();
         let meals = [];
@@ -460,7 +460,7 @@ const tools = {
           meals.push({
             id: doc.id,
             mealType: data.mealType,
-            timestamp: data.timestamp?.toDate().toISOString(),
+            timestamp: data.timestamp?.toDate().toISOString() || data.createdAt?.toDate().toISOString(),
             foods: data.foods || [],
             totalCalories: data.totalCalories || 0,
             totalProtein: data.totalProtein || 0,
