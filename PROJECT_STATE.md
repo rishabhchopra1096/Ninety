@@ -650,4 +650,215 @@ error: '#FF4B4B'        // Red
 
 ---
 
+## 🍽️ Phase 2: Food Logging Implementation (IN PROGRESS)
+
+### Status: Core Infrastructure Complete, Fixing Tool Result Extraction Bug
+
+**Last Updated:** 2025-11-05
+
+### What Works ✅
+
+**Tool Calling Infrastructure:**
+- ✅ Vercel AI SDK v5 with `generateText()` and `maxSteps: 10`
+- ✅ Multi-step tool execution with automatic tool calling
+- ✅ Message extraction from `result.response.messages` (handles empty text after tools)
+- ✅ Context-aware fallback messages based on tool type
+
+**Implemented Tools:**
+1. ✅ `logMeal` - Logs meals to Firestore after user confirmation
+2. ✅ `findRecentMeals` - Searches recent meals (by food name, limit)
+3. ✅ `updateMeal` - Updates existing meals (foods, notes, mealType)
+4. ✅ `getDailySummary` - Retrieves daily nutrition totals
+
+**Basic Food Logging:**
+- ✅ User says "I had 2 eggs for breakfast" → AI extracts nutrition → asks confirmation → logs to Firestore
+- ✅ Firestore structure: `nutrition/{userId}/meals/{mealId}` with foods array, totalCalories, mealType, timestamp
+- ✅ Meals persist across sessions
+
+**System Prompt Enhancements:**
+- ✅ Sequential workflow enforced (findRecentMeals → describe → confirm → updateMeal)
+- ✅ Explicit instructions to ALWAYS respond after calling tools
+- ✅ Concrete examples of meal update workflows
+
+### Current Blocking Issue 🚨
+
+**Bug:** Tool results extraction from wrong location in server.js:703-704
+
+**Symptoms:**
+- Backend logs: `✅ Found 1 recent meals from Firestore`
+- Frontend receives: `I couldn't find any recent meals matching your request`
+- Fallback message logic fails because `toolResults` array is empty
+
+**Root Cause:**
+Lines 703-704 extract from properties that don't exist at top level in AI SDK v5:
+```javascript
+// CURRENT (BROKEN):
+const toolCalls = result.toolCalls || [];
+const toolResults = result.toolResults || [];
+```
+
+In Vercel AI SDK v5, these exist in `result.steps[]`:
+```javascript
+result.steps = [
+  { toolCalls: [...], toolResults: [...] },
+  { toolCalls: [...], toolResults: [...] }
+]
+```
+
+**Verified Fix:**
+```javascript
+// CORRECT:
+const toolCalls = result.steps?.flatMap(step => step.toolCalls || []) || [];
+const toolResults = result.steps?.flatMap(step => step.toolResults || []) || [];
+```
+
+**Evidence This Is Correct:**
+- Line 744 already uses this pattern successfully: `result.steps?.filter(step => step.toolCalls).flatMap(step => step.toolCalls)`
+- Agent verification confirmed AI SDK v5 structure
+- Backend logs prove data exists in the execution steps
+
+### Bugs Fixed During Development ✅
+
+1. **Empty message after tool calls** - Implemented extraction from `result.response.messages` with proper array content handling (lines 644-672)
+2. **Generic fallback messages** - Made fallback context-aware: different messages for logMeal vs updateMeal vs findRecentMeals (lines 703-737)
+3. **Silent mealType parameter failure** - Added `mealType` to updateMeal schema (line 432)
+4. **AI hallucinations** - Replaced `stopWhen: stepCountIs(5)` with `maxSteps: 10` (cumulative counting issue)
+5. **Firestore index errors** - Removed `.where()` when using `.orderBy()` in findRecentMeals
+
+### Testing Scenarios
+
+**Working Scenarios:**
+- ✅ "I had 2 sunny side eggs for breakfast" → AI estimates nutrition → confirms → logs
+- ✅ "I had chicken and rice for lunch" → AI asks portion sizes → estimates calories → logs
+
+**Currently Broken (Will Fix After Bug Fix):**
+- ❌ "Actually that was lunch not breakfast" → Should find meal → describe it → confirm → update
+  - Currently says "couldn't find" even when meal exists
+
+**Next Tests After Fix:**
+- Update meal type: "That was lunch not breakfast"
+- Update meal contents: "Actually I had 3 eggs not 2"
+- Update with notes: "Add a note that it had hot sauce"
+
+### Key Implementation Details
+
+**Message Extraction Logic (server.js:644-672):**
+```javascript
+// Try simple case first
+let message = result.text || "";
+
+// If no text, extract from all assistant messages
+if (!message || !message.trim()) {
+  message = result.response.messages
+    .filter(msg => msg.role === 'assistant')
+    .map(msg => {
+      // Handle string content
+      if (typeof msg.content === 'string') return msg.content;
+      // Handle array content (mixed text and tool calls)
+      if (Array.isArray(msg.content)) {
+        return msg.content
+          .filter(part => part.type === 'text')
+          .map(part => part.text)
+          .join(' ');
+      }
+      return '';
+    })
+    .filter(text => text.trim())
+    .join('\n');
+}
+```
+
+**Context-Aware Fallback (server.js:703-737):**
+```javascript
+if (!message || !message.trim()) {
+  // Extract toolCalls and toolResults (BUG: wrong location!)
+  const toolCalls = result.toolCalls || [];  // ← FIX THIS
+  const toolResults = result.toolResults || [];  // ← FIX THIS
+
+  if (toolCalls.some(tc => tc.toolName === 'logMeal')) {
+    message = "✅ Your meal has been logged!";
+  } else if (toolCalls.some(tc => tc.toolName === 'updateMeal')) {
+    message = "✅ Your meal has been updated!";
+  } else if (toolCalls.some(tc => tc.toolName === 'findRecentMeals')) {
+    // Provide detailed fallback with meal details
+    const findResult = toolResults.find(tr => tr.toolName === 'findRecentMeals');
+    if (findResult?.result?.meals?.length > 0) {
+      const meal = findResult.result.meals[0];
+      message = `I found your ${meal.mealType} from ${timeStr}...`;
+    } else {
+      message = "I couldn't find any recent meals...";
+    }
+  }
+}
+```
+
+**System Prompt Sequential Workflow (server.js:159-227):**
+```javascript
+**CRITICAL: After calling findRecentMeals, you MUST:**
+1. Describe what meals you found (meal type, time, foods, calories)
+2. Identify which specific meal the user is referring to
+3. Explain what change you'll make
+4. Ask for explicit confirmation: "Should I make this change?"
+5. DO NOT proceed to updateMeal until user confirms in their next message
+
+### CONCRETE WORKFLOW EXAMPLES:
+
+**Example 1 - Changing meal type:**
+User: "Actually that was lunch not breakfast"
+You: *Call findRecentMeals({ limit: 10 })*
+You: "I found your breakfast from 9:00 AM with 2 sunny side eggs (140 cal). I'll change this to be logged as lunch instead. Should I make this update?"
+User: "Yes"
+You: *Call updateMeal({ mealId: "abc123", mealType: "lunch" })*
+You: "✅ Updated! Your meal is now logged as lunch."
+```
+
+### Firestore Structure
+
+```
+nutrition/{userId}/meals/{mealId}
+  - mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack'
+  - foods: [
+      {
+        name: string,
+        quantity: string,
+        calories: number,
+        protein: number,
+        carbs: number,
+        fats: number,
+        fiber: number
+      }
+    ]
+  - totalCalories: number
+  - notes: string (optional)
+  - timestamp: timestamp
+```
+
+### Next Steps (Immediate)
+
+1. **Fix server.js lines 703-704** - Extract toolCalls/toolResults from `result.steps`
+2. **Test meal update workflow** - "Actually that was lunch not breakfast"
+3. **Verify fallback messages work correctly** - Both for found and not found cases
+
+### Lessons Learned
+
+1. **AI SDK v5 Structure:** Always extract from `result.steps[]`, not top-level properties
+2. **Empty Text After Tools:** AI often generates no text when calling tools - robust fallback logic is critical
+3. **Context-Aware Fallbacks:** Generic "Done!" messages confuse users - fallback must reflect which tool was called
+4. **Thorough Investigation:** When backend and frontend disagree, trace data extraction step by step
+5. **Verify Evidence:** Line 744 using `result.steps` successfully was the smoking gun proving correct pattern
+
+### Files Modified
+
+- `server/server.js` - Tool implementations, AI configuration, message extraction (lines 64-750)
+- `PROJECT_STATE.md` - This documentation
+
+### Railway Deployment
+
+**API URL:** https://ninety-production.up.railway.app
+**Endpoints:**
+- `/api/chat` - Main AI chat with tool calling
+- `/api/transcribe` - Voice transcription via Whisper
+
+---
+
 **End of Project State Document**

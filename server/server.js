@@ -700,8 +700,8 @@ app.post('/api/chat', async (req, res) => {
 
     // Context-aware fallback based on which tool was called
     if (!message || !message.trim()) {
-      const toolCalls = result.toolCalls || [];
-      const toolResults = result.toolResults || [];
+      const toolCalls = result.steps?.flatMap(step => step.toolCalls || []) || [];
+      const toolResults = result.steps?.flatMap(step => step.toolResults || []) || [];
 
       console.log('⚠️ AI called tools but generated no text. Providing fallback based on tool type.');
 
