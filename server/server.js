@@ -623,7 +623,7 @@ app.post('/api/chat', async (req, res) => {
         content: msg.content
       })),
       tools,
-      stopWhen: stepCountIs(5), // Allow up to 5 tool call iterations (v5 syntax)
+      maxSteps: 10, // Allow up to 10 steps per request (resets each message, not cumulative)
       toolChoice: 'auto', // Let AI decide when to use tools
       // In v5, tools execute automatically using their built-in execute functions
     });
