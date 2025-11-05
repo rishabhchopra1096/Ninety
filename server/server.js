@@ -629,11 +629,18 @@ app.post('/api/chat', async (req, res) => {
     });
 
     console.log('✅ AI request successful');
-    console.log('🤖 Generated response:', result.text.substring(0, 100) + '...');
+
+    // Extract message from steps when tools are used (with maxSteps, text is in steps array)
+    const message = result.steps
+      ?.map(step => step.text)
+      .filter(text => text && text.trim())
+      .join('\n') || result.text || "";
+
+    console.log('🤖 Generated response:', message.substring(0, 100) + '...');
 
     // Return response with any tool calls made
     res.json({
-      message: result.text,
+      message,
       usage: result.usage,
       toolCalls: result.steps?.filter(step => step.toolCalls).flatMap(step => step.toolCalls) || [],
     });
