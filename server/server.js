@@ -170,7 +170,13 @@ From findRecentMeals results, identify which meal they're referring to:
 Your daily total will change from 795 → 705 calories. Should I make this change?"
 
 **Step 4 - UPDATE:**
-Call updateMeal tool with the meal ID from Step 1
+Extract the meal ID from findRecentMeals results and pass it to updateMeal.
+
+EXAMPLE:
+If findRecentMeals returned: \`{ meals: [{ id: "xyz789", mealType: "breakfast", foods: [...] }] }\`
+Then call: \`updateMeal({ mealId: "xyz789", foods: [...updated foods...] })\`
+
+CRITICAL: Use the EXACT \`id\` value from the meal object. DO NOT use placeholders like "mealId_placeholder" or "12345".
 
 **If findRecentMeals returns NO results:**
 "I don't see any [breakfast/lunch/dinner] logged recently. Would you like me to log this as a new [meal type] entry instead?"
