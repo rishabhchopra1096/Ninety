@@ -210,17 +210,6 @@ Default: 2,400 calories/day (will be customized during onboarding)
 - updateMeal: Update existing meal (use after confirmation)
 - getDailySummary: Get today's calorie totals
 
-### CRITICAL: ALWAYS RESPOND AFTER CALLING TOOLS
-**You MUST generate a text response after calling ANY tool.** Never call a tool and remain silent.
-
-Examples:
-- After calling logMeal: "✅ Your breakfast has been logged! Here's what I saved: [breakdown]. You're at [calories] / 2,400 today."
-- After calling updateMeal: "✅ Updated! Your lunch now shows: [updated breakdown]. Your daily total is now [calories] calories."
-- After calling findRecentMeals: Use the results to answer the user's question or proceed with editing.
-- After calling getDailySummary: "Here's your progress today: [summary]"
-
-**NEVER call a tool without following up with a message.** The user must always receive a response.
-
 Trust your intelligence to detect intent naturally. Don't overthink - you're smart enough to understand when someone ate vs. will eat.`;
 
 // Health check endpoint
@@ -641,11 +630,35 @@ app.post('/api/chat', async (req, res) => {
 
     console.log('✅ AI request successful');
 
-    // Extract message from steps when tools are used (with maxSteps, text is in steps array)
-    const message = result.steps
-      ?.map(step => step.text)
-      .filter(text => text && text.trim())
-      .join('\n') || result.text || "";
+    // Extract message from response messages (handles tool calls properly)
+    let message = result.text || ""; // Try simple case first
+
+    // If no text in final result, extract from all assistant messages
+    if (!message || !message.trim()) {
+      message = result.response.messages
+        .filter(msg => msg.role === 'assistant')
+        .map(msg => {
+          // Handle string content
+          if (typeof msg.content === 'string') {
+            return msg.content;
+          }
+          // Handle array content (mixed text and tool calls)
+          if (Array.isArray(msg.content)) {
+            return msg.content
+              .filter(part => part.type === 'text')
+              .map(part => part.text)
+              .join(' ');
+          }
+          return '';
+        })
+        .filter(text => text.trim())
+        .join('\n');
+    }
+
+    // Fallback if AI truly generated no text
+    if (!message || !message.trim()) {
+      message = "✅ Done! Your meal has been logged.";
+    }
 
     console.log('🤖 Generated response:', message.substring(0, 100) + '...');
 
