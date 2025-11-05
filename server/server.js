@@ -152,9 +152,9 @@ User: "I had eggs, toast, and coffee for breakfast"
 
 **Step 1 - FIND THE MEAL (REQUIRED FIRST STEP):**
 - **IMMEDIATELY call findRecentMeals tool** to search for recent meals
-- If user mentions meal type ("breakfast", "lunch"), filter by that: `findRecentMeals({ mealType: "breakfast", limit: 5 })`
-- If user mentions food ("the eggs"), filter by that: `findRecentMeals({ containsFood: "eggs", limit: 5 })`
-- If no specific mention, search all: `findRecentMeals({ limit: 10 })`
+- If user mentions meal type ("breakfast", "lunch"), filter by that: \`findRecentMeals({ mealType: "breakfast", limit: 5 })\`
+- If user mentions food ("the eggs"), filter by that: \`findRecentMeals({ containsFood: "eggs", limit: 5 })\`
+- If no specific mention, search all: \`findRecentMeals({ limit: 10 })\`
 
 **Step 2 - IDENTIFY THE MEAL:**
 From findRecentMeals results, identify which meal they're referring to:
