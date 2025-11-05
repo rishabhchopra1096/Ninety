@@ -352,11 +352,10 @@ const tools = {
   findRecentMeals: tool({
     description: 'Find recent meals for context. Use when user references a previous meal or when editing.',
     inputSchema: z.object({
-      mealType: z.enum(['breakfast', 'lunch', 'dinner', 'snack']).optional().describe('Filter by meal type'),
       containsFood: z.string().optional().describe('Search for meals containing this food item'),
       limit: z.number().optional().describe('Maximum number of meals to return (default: 10)'),
     }),
-    execute: async ({ mealType, containsFood, limit }, { abortSignal }) => {
+    execute: async ({ containsFood, limit }, { abortSignal }) => {
       console.log('🔧 Executing findRecentMeals tool');
 
       const userId = global.currentUserId || 'anonymous';
@@ -366,7 +365,6 @@ const tools = {
         console.warn('⚠️  Firestore not available, using mock database');
         const userMeals = mockMealsDB[userId] || [];
         const filtered = userMeals.filter(meal => {
-          if (mealType && meal.mealType !== mealType) return false;
           if (containsFood) {
             const hasFood = meal.foods.some(f =>
               f.name.toLowerCase().includes(containsFood.toLowerCase())
@@ -382,11 +380,6 @@ const tools = {
       try {
         const mealsRef = db.collection('nutrition').doc(userId).collection('meals');
         let query = mealsRef.orderBy('timestamp', 'desc').limit(limit || 10);
-
-        // Apply meal type filter if provided
-        if (mealType) {
-          query = query.where('mealType', '==', mealType);
-        }
 
         const snapshot = await query.get();
         let meals = [];
