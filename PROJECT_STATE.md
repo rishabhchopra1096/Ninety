@@ -833,24 +833,202 @@ nutrition/{userId}/meals/{mealId}
   - timestamp: timestamp
 ```
 
-### Next Steps (Immediate)
+### Update: November 5, 2025 - Critical Issues Discovered
 
-1. **Fix server.js lines 703-704** - Extract toolCalls/toolResults from `result.steps`
-2. **Test meal update workflow** - "Actually that was lunch not breakfast"
-3. **Verify fallback messages work correctly** - Both for found and not found cases
+After extensive debugging and user testing, we discovered that meal updates STILL don't work despite all previous fixes. Through systematic investigation, we identified the root causes:
 
-### Lessons Learned
+#### ✅ Fixes Applied (Previous Session)
+
+1. **Lines 703-704: toolResults extraction** - Changed from `result.toolCalls` to `result.steps?.flatMap(step => step.toolCalls || [])`
+2. **Line 444: Firestore query** - Changed from `orderBy('timestamp')` to `orderBy('createdAt')` to avoid indexing issues
+3. **Lines 490-506: ID validation** - Added rejection of placeholder IDs like "xyz789"
+4. **Lines 727-763: Fallback success checking** - Added checks for `toolResults[].result.success`
+5. **System prompt enhancements** - Added calculation rules, realistic example IDs, stronger warnings
+
+#### 🚨 NEW CRITICAL ISSUES DISCOVERED (Current Session)
+
+**Evidence from Production Logs:**
+```
+🔧 Executing findRecentMeals tool
+✅ Found 2 recent meals from Firestore
+⚠️ AI called tools but generated no text. Providing fallback based on tool type.
+🤖 Generated response: I couldn't find any recent meals matching your request...
+```
+
+**Analysis:** findRecentMeals IS working and finding meals, but the system is saying it can't find them!
+
+#### Problem 1: AI Not Analyzing Tool Results ⚠️ CRITICAL
+
+**What's Happening:**
+- User says: "Actually that was lunch not breakfast"
+- AI calls `findRecentMeals` → Returns 2 meals ✅
+- AI generates NO TEXT after calling the tool ❌
+- Fallback logic kicks in and says "couldn't find meals" ❌
+
+**Root Cause:**
+The AI is not reading the tool results and generating a response. The Vercel AI SDK's `generateText()` function:
+1. Calls the tool
+2. Gets results back
+3. Should have AI analyze results and respond
+4. But AI generates empty text instead
+5. Fallback tries to compensate but fails
+
+**Expected vs Actual Workflow:**
+
+Expected:
+```
+1. AI calls findRecentMeals
+2. Tool returns: {meals: [{id: "abc123", mealType: "breakfast", ...}, ...]}
+3. AI READS results
+4. AI generates: "I found your breakfast from 9:00 AM with eggs (180 cal)..."
+5. AI asks for confirmation
+6. User confirms
+7. AI calls updateMeal with real ID
+```
+
+Actual:
+```
+1. AI calls findRecentMeals
+2. Tool returns: {meals: [{id: "abc123", ...}, ...]}
+3. AI generates EMPTY TEXT
+4. Fallback says "couldn't find any meals" (wrong!)
+5. Workflow fails
+```
+
+**User's Key Insight:**
+The system is trying to use code logic (containsFood filter, fallback messages) to figure out which meal to update, when it should be using a SECOND AI ANALYSIS STEP:
+
+```
+Step 1: findRecentMeals returns all recent meals
+Step 2: Make ANOTHER AI call asking: "Which of these meals is the user referring to?"
+Step 3: AI analyzes conversation context + meal data
+Step 4: AI identifies the specific meal and its ID
+Step 5: AI confirms with user showing full macros
+Step 6: AI calls updateMeal with the correct ID
+```
+
+#### Problem 2: Fallback Logic Structure Mismatch
+
+**Location:** Lines 741-754
+
+```javascript
+const findResult = toolResults.find(tr => tr.toolName === 'findRecentMeals');
+if (findResult?.result?.meals?.length > 0) {
+  // Show meal details
+} else {
+  message = "I couldn't find any recent meals..."; // ❌ This is triggering wrongly
+}
+```
+
+**Issue:** We're checking `findResult?.result?.meals` but the actual structure of `toolResults` might be different. The tool returns `{meals: [...]}` but we may be accessing it incorrectly.
+
+**Need:** Add debug logging to see actual structure:
+```javascript
+console.log('🔍 DEBUG toolResults:', JSON.stringify(toolResults, null, 2));
+console.log('🔍 DEBUG findResult:', JSON.stringify(findResult, null, 2));
+```
+
+#### Problem 3: Mock Database in Production Code ⚠️ CRITICAL
+
+**Locations:**
+- Lines 429-440 (findRecentMeals)
+- Lines 365-384 (logMeal)
+- Lines 510-528 (updateMeal)
+- Lines 590-620 (getDailySummary)
+
+**The Pattern:**
+```javascript
+if (!db) {
+  console.warn('⚠️  Firestore not available, using mock database');
+  // Returns fake data instead of failing
+}
+```
+
+**Why This Is Dangerous:**
+- If Firestore goes down, app silently uses fake data
+- User thinks meals are saved but they're not
+- Creates inconsistent state between what AI thinks happened and reality
+- Should FAIL LOUDLY in production, not use mock data
+
+**Fix Required:** Remove all mock database logic. Production should throw clear errors if Firestore is unavailable.
+
+#### Problem 4: Premature Code-Based Filtering
+
+**Location:** Lines 453-458
+
+```javascript
+if (containsFood) {
+  const hasFood = data.foods?.some(f =>
+    f.name.toLowerCase().includes(containsFood.toLowerCase())
+  );
+  if (!hasFood) return;
+}
+```
+
+**Issue:** Trying to be "smart" with code-based string matching instead of letting AI use its intelligence.
+
+**Better Approach:** Return all recent meals and let AI analyze conversation context to determine which meal the user is referring to.
+
+---
+
+### Current Status: BLOCKED
+
+**Meal Update Workflow:** NOT WORKING
+- Basic meal logging works ✅
+- Finding recent meals works ✅
+- But AI doesn't analyze which meal to update ❌
+- Fallback shows wrong messages ❌
+
+**Next Steps:**
+
+1. **Add comprehensive inline comments to server.js**
+   - Line-by-line comments explaining what each line does
+   - Large comment blocks at top of each function/section
+   - Help understand code flow to identify remaining issues
+
+2. **Add debug logging to investigate toolResults structure**
+   - Log exact structure of `toolResults` after findRecentMeals
+   - Understand why fallback thinks no meals were found
+   - Fix the structure mismatch
+
+3. **Implement second AI analysis step**
+   - After findRecentMeals returns results
+   - Make another AI call to identify specific meal
+   - Pass meals + conversation history
+   - Get meal ID back
+   - Then proceed with update workflow
+
+4. **Remove mock database patterns**
+   - Production app should fail loudly if Firestore unavailable
+   - Remove all `if (!db)` fallback logic
+
+5. **Fix AI empty text response**
+   - Investigate why AI doesn't generate text after tool calls
+   - May need to adjust Vercel AI SDK configuration
+   - Or add explicit system prompt instructions
+
+---
+
+### Lessons Learned (Updated)
 
 1. **AI SDK v5 Structure:** Always extract from `result.steps[]`, not top-level properties
-2. **Empty Text After Tools:** AI often generates no text when calling tools - robust fallback logic is critical
-3. **Context-Aware Fallbacks:** Generic "Done!" messages confuse users - fallback must reflect which tool was called
-4. **Thorough Investigation:** When backend and frontend disagree, trace data extraction step by step
-5. **Verify Evidence:** Line 744 using `result.steps` successfully was the smoking gun proving correct pattern
+2. **Empty Text After Tools:** AI often generates no text when calling tools - this is the CORE issue blocking meal updates
+3. **Context-Aware Fallbacks:** Even with correct fallback logic, can't replace actual AI analysis
+4. **Code Logic vs AI Intelligence:** Don't try to be smart with code (containsFood filter) - let AI analyze context
+5. **Mock Data Is Dangerous:** Silent fallbacks to fake data create inconsistent state - fail loudly instead
+6. **Second Analysis Step:** Complex workflows (identifying which meal to update) need multiple AI calls with different contexts
+7. **Thorough Investigation:** Backend logs are critical - they revealed findRecentMeals WAS working when we thought it wasn't
+8. **User Testing Is Key:** Logs showed the actual problem vs what we assumed was happening
+
+---
 
 ### Files Modified
 
-- `server/server.js` - Tool implementations, AI configuration, message extraction (lines 64-750)
+- `server/server.js` - Tool implementations, AI configuration, message extraction, validation (lines 64-792)
 - `PROJECT_STATE.md` - This documentation
+- `docs/SERVER_CODE_EXPLANATION.md` - Created detailed explanation of server.js (NEW)
+
+---
 
 ### Railway Deployment
 
@@ -858,6 +1036,8 @@ nutrition/{userId}/meals/{mealId}
 **Endpoints:**
 - `/api/chat` - Main AI chat with tool calling
 - `/api/transcribe` - Voice transcription via Whisper
+
+**Status:** Deployed but meal update workflow not functional
 
 ---
 
