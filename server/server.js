@@ -210,6 +210,13 @@ Default: 2,400 calories/day (will be customized during onboarding)
 - updateMeal: Update existing meal (use after confirmation)
 - getDailySummary: Get today's calorie totals
 
+### IMPORTANT: ALWAYS RESPOND AFTER CALLING TOOLS
+After using ANY tool, you MUST generate a natural language response explaining what you did or found.
+- After logMeal: Confirm what was logged with calorie breakdown
+- After updateMeal: Confirm what was updated and show new values
+- After findRecentMeals: Describe what you found and proceed with the edit
+- NEVER call a tool and stay silent - always follow up with text
+
 Trust your intelligence to detect intent naturally. Don't overthink - you're smart enough to understand when someone ate vs. will eat.`;
 
 // Health check endpoint
@@ -655,9 +662,35 @@ app.post('/api/chat', async (req, res) => {
         .join('\n');
     }
 
-    // Fallback if AI truly generated no text
+    // Context-aware fallback based on which tool was called
     if (!message || !message.trim()) {
-      message = "✅ Done! Your meal has been logged.";
+      const toolCalls = result.toolCalls || [];
+      const toolResults = result.toolResults || [];
+
+      console.log('⚠️ AI called tools but generated no text. Providing fallback based on tool type.');
+
+      if (toolCalls.some(tc => tc.toolName === 'logMeal')) {
+        message = "✅ Your meal has been logged!";
+      } else if (toolCalls.some(tc => tc.toolName === 'updateMeal')) {
+        message = "✅ Your meal has been updated!";
+      } else if (toolCalls.some(tc => tc.toolName === 'findRecentMeals')) {
+        // AI searched for meals but didn't describe them - likely an error in the flow
+        const findResult = toolResults.find(tr => tr.toolName === 'findRecentMeals');
+        if (findResult?.result?.meals?.length > 0) {
+          message = "I found your recent meals. What would you like me to do with them?";
+        } else {
+          message = "I couldn't find any recent meals matching your request.";
+        }
+      } else if (toolCalls.some(tc => tc.toolName === 'getDailySummary')) {
+        const summaryResult = toolResults.find(tr => tr.toolName === 'getDailySummary');
+        if (summaryResult?.result) {
+          message = `Your daily summary: ${summaryResult.result.totalCalories || 0} calories logged today.`;
+        } else {
+          message = "Here's your daily summary.";
+        }
+      } else {
+        message = "✅ Done!";
+      }
     }
 
     console.log('🤖 Generated response:', message.substring(0, 100) + '...');
