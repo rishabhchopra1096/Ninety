@@ -156,6 +156,16 @@ User: "I had eggs, toast, and coffee for breakfast"
 - Use conversation context to identify which meal the user is referring to
 - Match by food names, timing, and context from previous messages
 
+**CRITICAL: After calling findRecentMeals, you MUST:**
+1. Describe what meals you found (meal type, time, foods, calories)
+2. Identify which specific meal the user is referring to
+3. Explain what change you'll make
+4. Ask for explicit confirmation: "Should I make this change?"
+5. DO NOT proceed to updateMeal until user confirms in their next message
+
+**EXAMPLE RESPONSE after finding meals:**
+"I found your breakfast from 9:00 AM with 2 sunny side eggs (180 cal). I'll change this to be logged as lunch instead. Should I make this update?"
+
 **Step 2 - IDENTIFY THE MEAL:**
 From findRecentMeals results, identify which meal they're referring to:
 - Match by meal type, time, and food names
@@ -189,6 +199,32 @@ Which one are you correcting?"
 
 **If no match found**:
 "Hmm, I don't see pasta in your recent meals. When did you have it?"
+
+### CONCRETE WORKFLOW EXAMPLES:
+
+**Example 1 - Changing meal type:**
+User: "Actually that was lunch not breakfast"
+You: *Call findRecentMeals({ limit: 10 })*
+You: "I found your breakfast from 9:00 AM with 2 sunny side eggs (140 cal). I'll change this to be logged as lunch instead. Should I make this update?"
+User: "Yes"
+You: *Call updateMeal({ mealId: "abc123", mealType: "lunch" })*
+You: "✅ Updated! Your meal is now logged as lunch."
+
+**Example 2 - Changing quantity:**
+User: "Wait I only had 1 egg not 2"
+You: *Call findRecentMeals({ containsFood: "egg", limit: 10 })*
+You: "I found your breakfast from 9:00 AM with 2 eggs (180 cal, 12g protein). I'll update this to 1 egg (90 cal, 6g protein). Should I make this change?"
+User: "Yes please"
+You: *Call updateMeal({ mealId: "abc123", foods: [{ name: "egg", quantity: "1 egg", calories: 90, protein: 6, carbs: 1, fats: 7, fiber: 0 }] })*
+You: "✅ Updated! Your breakfast now shows 1 egg (90 cal)."
+
+**Example 3 - Adding food to existing meal:**
+User: "I also had toast with that"
+You: *Call findRecentMeals({ limit: 10 })*
+You: "I found your breakfast from 9:00 AM with 2 eggs (180 cal). I'll add 2 slices of toast (160 cal, 6g protein, 30g carbs). Your breakfast total will become 340 cal. Should I add this?"
+User: "Yes"
+You: *Call updateMeal({ mealId: "abc123", foods: [existing eggs, new toast] })*
+You: "✅ Updated! Your breakfast now includes 2 eggs and 2 slices of toast (340 cal total)."
 
 ### MACROS TO SHOW:
 Always display: Calories | Protein (P) | Carbs (C) | Fats (F) | Fiber (Fb)
@@ -674,12 +710,18 @@ app.post('/api/chat', async (req, res) => {
       } else if (toolCalls.some(tc => tc.toolName === 'updateMeal')) {
         message = "✅ Your meal has been updated!";
       } else if (toolCalls.some(tc => tc.toolName === 'findRecentMeals')) {
-        // AI searched for meals but didn't describe them - likely an error in the flow
+        // AI searched for meals but didn't describe them - provide detailed fallback
         const findResult = toolResults.find(tr => tr.toolName === 'findRecentMeals');
         if (findResult?.result?.meals?.length > 0) {
-          message = "I found your recent meals. What would you like me to do with them?";
+          const meal = findResult.result.meals[0];
+          const foodNames = meal.foods.map(f => f.name).join(', ');
+          const timeStr = new Date(meal.timestamp).toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit'
+          });
+          message = `I found your ${meal.mealType} from ${timeStr} with ${foodNames} (${meal.totalCalories} cal). What changes would you like me to make?`;
         } else {
-          message = "I couldn't find any recent meals matching your request.";
+          message = "I couldn't find any recent meals matching your request. Could you tell me more about when you ate or what foods you had?";
         }
       } else if (toolCalls.some(tc => tc.toolName === 'getDailySummary')) {
         const summaryResult = toolResults.find(tr => tr.toolName === 'getDailySummary');
