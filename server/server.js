@@ -150,18 +150,22 @@ User: "I had eggs, toast, and coffee for breakfast"
 
 **REQUIRED WORKFLOW (FOLLOW THESE STEPS IN ORDER):**
 
-**Step 1 - FIND THE MEAL (REQUIRED FIRST STEP):**
+**Step 1 - FIND THE MEAL (⚠️ NEVER SKIP THIS STEP):**
 - **IMMEDIATELY call findRecentMeals tool** to search for recent meals
 - **ALWAYS search ALL recent meals**: \`findRecentMeals({ limit: 10 })\`
+- ⚠️ **You CANNOT call updateMeal without calling findRecentMeals first**
+- If you skip this step, updateMeal will fail with an error
 - Use conversation context to identify which meal the user is referring to
 - Match by food names, timing, and context from previous messages
 
 **CRITICAL: After calling findRecentMeals, you MUST:**
 1. Describe what meals you found (meal type, time, foods, calories)
 2. Identify which specific meal the user is referring to
-3. Explain what change you'll make
+3. Explain what change you'll make (with full updated macros)
 4. Ask for explicit confirmation: "Should I make this change?"
-5. DO NOT proceed to updateMeal until user confirms in their next message
+5. ⚠️ **STOP HERE - DO NOT call updateMeal yet**
+
+**Only proceed to Step 4 (updateMeal) after the user confirms in their next message.**
 
 **EXAMPLE RESPONSE after finding meals:**
 "I found your breakfast from 9:00 AM with 2 sunny side eggs (180 cal). I'll change this to be logged as lunch instead. Should I make this update?"
@@ -173,20 +177,29 @@ From findRecentMeals results, identify which meal they're referring to:
 - If multiple found → ask which one (see below)
 
 **Step 3 - CONFIRM THE CHANGE:**
-**ALWAYS confirm before updating**:
+**ALWAYS confirm before updating** and show FULL macros (calories, protein, carbs, fats, fiber):
+
+**Calculation Rules:**
+1. **Changing meal type ONLY**: Macros stay identical - confirm this to the user
+2. **Changing quantity**: Multiply all macros by ratio (e.g., 1 egg ÷ 2 eggs = 0.5x all values)
+3. **Adding items**: Show math - [existing] + [new] = [total] with full macro breakdown
+
+**Example confirmation format:**
 "Got it! I'll update your breakfast from 9:00 AM:
-• From: 2 eggs (180 cal)
-• To: 1 egg (90 cal)
+• From: 2 eggs (180 cal | 12g P, 1g C, 14g F, 0g Fb)
+• To: 1 egg (90 cal | 6g P, 0.5g C, 7g F, 0g Fb)
 Your daily total will change from 795 → 705 calories. Should I make this change?"
 
 **Step 4 - UPDATE:**
 Extract the meal ID from findRecentMeals results and pass it to updateMeal.
 
 EXAMPLE:
-If findRecentMeals returned: \`{ meals: [{ id: "xyz789", mealType: "breakfast", foods: [...] }] }\`
-Then call: \`updateMeal({ mealId: "xyz789", foods: [...updated foods...] })\`
+If findRecentMeals returned: \`{ meals: [{ id: "meal_1730823456789_4aBcXyZ", mealType: "breakfast", foods: [...] }] }\`
+Then call: \`updateMeal({ mealId: "meal_1730823456789_4aBcXyZ", foods: [...updated foods...] })\`
 
-CRITICAL: Use the EXACT \`id\` value from the meal object. DO NOT use placeholders like "mealId_placeholder" or "12345".
+CRITICAL: Use the EXACT \`id\` value from the meal object returned by findRecentMeals.
+DO NOT use placeholder IDs like "xyz789", "abc123", "12345", or "mealId_placeholder".
+ONLY use real IDs from findRecentMeals results in the current conversation.
 
 **If findRecentMeals returns NO results:**
 "I don't see any [breakfast/lunch/dinner] logged recently. Would you like me to log this as a new [meal type] entry instead?"
@@ -205,7 +218,7 @@ Which one are you correcting?"
 **Example 1 - Changing meal type:**
 User: "Actually that was lunch not breakfast"
 You: *Call findRecentMeals({ limit: 10 })*
-You: "I found your breakfast from 9:00 AM with 2 sunny side eggs (140 cal). I'll change this to be logged as lunch instead. Should I make this update?"
+You: "I found your breakfast from 9:00 AM with 2 sunny side eggs (140 cal | 12g P, 1g C, 10g F, 0g Fb). I'll change this to be logged as lunch instead. The macros will stay the same: 140 cal | 12g P, 1g C, 10g F, 0g Fb. Should I make this update?"
 User: "Yes"
 You: *Call updateMeal({ mealId: "abc123", mealType: "lunch" })*
 You: "✅ Updated! Your meal is now logged as lunch."
@@ -213,18 +226,18 @@ You: "✅ Updated! Your meal is now logged as lunch."
 **Example 2 - Changing quantity:**
 User: "Wait I only had 1 egg not 2"
 You: *Call findRecentMeals({ containsFood: "egg", limit: 10 })*
-You: "I found your breakfast from 9:00 AM with 2 eggs (180 cal, 12g protein). I'll update this to 1 egg (90 cal, 6g protein). Should I make this change?"
+You: "I found your breakfast from 9:00 AM with 2 eggs (180 cal | 12g P, 2g C, 14g F, 0g Fb). I'll update this to 1 egg (90 cal | 6g P, 1g C, 7g F, 0g Fb). Should I make this change?"
 User: "Yes please"
 You: *Call updateMeal({ mealId: "abc123", foods: [{ name: "egg", quantity: "1 egg", calories: 90, protein: 6, carbs: 1, fats: 7, fiber: 0 }] })*
-You: "✅ Updated! Your breakfast now shows 1 egg (90 cal)."
+You: "✅ Updated! Your breakfast now shows 1 egg (90 cal | 6g P, 1g C, 7g F, 0g Fb)."
 
 **Example 3 - Adding food to existing meal:**
 User: "I also had toast with that"
 You: *Call findRecentMeals({ limit: 10 })*
-You: "I found your breakfast from 9:00 AM with 2 eggs (180 cal). I'll add 2 slices of toast (160 cal, 6g protein, 30g carbs). Your breakfast total will become 340 cal. Should I add this?"
+You: "I found your breakfast from 9:00 AM with 2 eggs (180 cal | 12g P, 2g C, 14g F, 0g Fb). I'll add 2 slices of toast (160 cal | 6g P, 30g C, 2g F, 2g Fb). Your breakfast total will become: 2 eggs (180 cal) + toast (160 cal) = 340 cal | 18g P, 32g C, 16g F, 2g Fb. Should I add this?"
 User: "Yes"
 You: *Call updateMeal({ mealId: "abc123", foods: [existing eggs, new toast] })*
-You: "✅ Updated! Your breakfast now includes 2 eggs and 2 slices of toast (340 cal total)."
+You: "✅ Updated! Your breakfast now includes 2 eggs and 2 slices of toast (340 cal | 18g P, 32g C, 16g F, 2g Fb)."
 
 ### MACROS TO SHOW:
 Always display: Calories | Protein (P) | Carbs (C) | Fats (F) | Fiber (Fb)
@@ -399,7 +412,7 @@ const tools = {
   }),
 
   findRecentMeals: tool({
-    description: 'Find recent meals for context. Use when user references a previous meal or when editing.',
+    description: 'Find recent meals for context. REQUIRED before calling updateMeal. Use when user references a previous meal or wants to edit. Returns actual meal IDs needed for updates.',
     inputSchema: z.object({
       containsFood: z.string().optional().describe('Search for meals containing this food item'),
       limit: z.number().optional().describe('Maximum number of meals to return (default: 10)'),
@@ -468,9 +481,9 @@ const tools = {
   }),
 
   updateMeal: tool({
-    description: 'Update an existing meal. Use when user corrects or adjusts a previous meal.',
+    description: 'Update an existing meal. CRITICAL: You MUST call findRecentMeals first to get the meal ID. NEVER use placeholder IDs. Only use IDs from findRecentMeals results.',
     inputSchema: z.object({
-      mealId: z.string().describe('The meal ID to update (from findRecentMeals)'),
+      mealId: z.string().describe('The meal ID from findRecentMeals (NEVER use placeholders like "xyz789" or "abc123")'),
       foods: z.array(z.object({
         name: z.string(),
         quantity: z.string(),
@@ -484,7 +497,26 @@ const tools = {
       mealType: z.enum(['breakfast', 'lunch', 'dinner', 'snack']).optional().describe('Updated meal type'),
     }),
     execute: async ({ mealId, foods, notes, mealType }, { abortSignal }) => {
-      console.log('🔧 Executing updateMeal tool');
+      console.log('🔧 Executing updateMeal tool with mealId:', mealId);
+
+      // VALIDATION: Reject known placeholder IDs
+      const placeholders = ['xyz789', 'abc123', '12345', 'mealId_placeholder', 'meal_placeholder'];
+      if (placeholders.includes(mealId)) {
+        console.error('❌ REJECTED: AI used placeholder ID instead of calling findRecentMeals');
+        return {
+          success: false,
+          message: 'ERROR: You must call findRecentMeals first to get the real meal ID. Never use placeholder IDs like "xyz789".'
+        };
+      }
+
+      // VALIDATION: Check if ID looks like a real Firestore ID (min 10 chars)
+      if (mealId.length < 10) {
+        console.error('❌ REJECTED: Meal ID too short, likely a placeholder:', mealId);
+        return {
+          success: false,
+          message: 'ERROR: Invalid meal ID. You must call findRecentMeals first to get the real meal ID.'
+        };
+      }
 
       const userId = global.currentUserId || 'anonymous';
 
@@ -706,9 +738,19 @@ app.post('/api/chat', async (req, res) => {
       console.log('⚠️ AI called tools but generated no text. Providing fallback based on tool type.');
 
       if (toolCalls.some(tc => tc.toolName === 'logMeal')) {
-        message = "✅ Your meal has been logged!";
+        const logResult = toolResults.find(tr => tr.toolName === 'logMeal');
+        if (logResult?.result?.success === false) {
+          message = `❌ Failed to log meal: ${logResult.result.message}`;
+        } else {
+          message = "✅ Your meal has been logged!";
+        }
       } else if (toolCalls.some(tc => tc.toolName === 'updateMeal')) {
-        message = "✅ Your meal has been updated!";
+        const updateResult = toolResults.find(tr => tr.toolName === 'updateMeal');
+        if (updateResult?.result?.success === false) {
+          message = `❌ Failed to update meal: ${updateResult.result.message}`;
+        } else {
+          message = "✅ Your meal has been updated!";
+        }
       } else if (toolCalls.some(tc => tc.toolName === 'findRecentMeals')) {
         // AI searched for meals but didn't describe them - provide detailed fallback
         const findResult = toolResults.find(tr => tr.toolName === 'findRecentMeals');
@@ -725,7 +767,9 @@ app.post('/api/chat', async (req, res) => {
         }
       } else if (toolCalls.some(tc => tc.toolName === 'getDailySummary')) {
         const summaryResult = toolResults.find(tr => tr.toolName === 'getDailySummary');
-        if (summaryResult?.result) {
+        if (summaryResult?.result?.success === false) {
+          message = `❌ Failed to get summary: ${summaryResult.result.message}`;
+        } else if (summaryResult?.result) {
           message = `Your daily summary: ${summaryResult.result.totalCalories || 0} calories logged today.`;
         } else {
           message = "Here's your daily summary.";
