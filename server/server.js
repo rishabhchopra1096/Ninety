@@ -438,8 +438,9 @@ const tools = {
         fiber: z.number(),
       })).optional().describe('Updated foods array'),
       notes: z.string().optional().describe('Updated notes'),
+      mealType: z.enum(['breakfast', 'lunch', 'dinner', 'snack']).optional().describe('Updated meal type'),
     }),
-    execute: async ({ mealId, foods, notes }, { abortSignal }) => {
+    execute: async ({ mealId, foods, notes, mealType }, { abortSignal }) => {
       console.log('🔧 Executing updateMeal tool');
 
       const userId = global.currentUserId || 'anonymous';
@@ -454,6 +455,7 @@ const tools = {
           const updates = {};
           if (foods) updates.foods = foods;
           if (notes) updates.notes = notes;
+          if (mealType) updates.mealType = mealType;
 
           userMealsList[mealIndex] = { ...userMealsList[mealIndex], ...updates };
           console.log('✅ Meal updated in mock:', mealId);
@@ -487,6 +489,10 @@ const tools = {
 
         if (notes !== undefined) {
           updates.notes = notes;
+        }
+
+        if (mealType !== undefined) {
+          updates.mealType = mealType;
         }
 
         updates.updatedAt = admin.firestore.FieldValue.serverTimestamp();
