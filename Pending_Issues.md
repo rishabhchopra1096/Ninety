@@ -90,3 +90,7 @@ Fix Options:
 The agent recommends Option B - the tool
 already returns success confirmation, no
 need to double-check.
+
+### Issue 4: Recursive loop in Daily Summary:
+
+[Ninety/docs/images/IMG_1934.PNG]
