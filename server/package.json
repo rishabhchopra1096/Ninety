@@ -8,6 +8,7 @@
     "dev": "node server.js"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^2.0.41",
     "@ai-sdk/openai": "^2.0.34",
     "ai": "^5.0.51",
     "cors": "^2.8.5",
