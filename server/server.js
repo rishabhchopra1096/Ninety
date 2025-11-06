@@ -33,7 +33,7 @@ const fs = require("fs"); // File system operations (create/delete files)
 
 const path = require("path"); // Handle file paths
 
-const { openai } = require("@ai-sdk/openai"); // OpenAI integration for Vercel AI SDK
+const { anthropic } = require("@ai-sdk/anthropic"); // Anthropic Claude integration for Vercel AI SDK
 
 const { generateText, tool, stepCountIs } = require("ai"); // Vercel AI SDK for chat with tools
 const { z } = require("zod"); // Schema validation library
@@ -1194,7 +1194,7 @@ Return ONLY a valid JSON object with this structure:
         console.log("🤖 Calling AI to analyze meal update...");
 
         const analysisResult = await generateText({
-          model: openai("gpt-4o-mini"),
+          model: anthropic("claude-sonnet-4-5"),
           messages: [
             {
               role: "user",
@@ -1607,8 +1607,8 @@ app.post("/api/chat", async (req, res) => {
      * ============================================================================
      */
     const result = await generateText({
-      // Which AI model to use (gpt-4o-mini is faster and cheaper)
-      model: openai("gpt-4o-mini"),
+      // Which AI model to use (Claude Sonnet 4.5 for better tool calling)
+      model: anthropic("claude-sonnet-4-5"),
 
       // The system prompt (AI's instructions)
       system: systemPromptWithContext,
