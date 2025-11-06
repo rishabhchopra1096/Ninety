@@ -293,7 +293,7 @@ app.use(express.json());
  * 1. Call findRecentMeals
  * 2. Describe what it found
  * 3. Ask for confirmation
- * 4. THEN call updateMeal
+ * 4. THEN call analyzeAndUpdateMeal
  *
  * But currently, step 2-3 aren't happening - the AI calls findRecentMeals
  * and then generates EMPTY TEXT instead of describing what it found.
@@ -353,21 +353,22 @@ User: "I had eggs, toast, and coffee for breakfast"
 **REQUIRED WORKFLOW (FOLLOW THESE STEPS IN ORDER):**
 
 **Step 1 - FIND THE MEAL (⚠️ NEVER SKIP THIS STEP):**
-- **IMMEDIATELY call findRecentMeals tool** to search for recent meals
-- **ALWAYS search ALL recent meals**: \`findRecentMeals({ limit: 10 })\`
-- ⚠️ **You CANNOT call updateMeal without calling findRecentMeals first**
-- If you skip this step, updateMeal will fail with an error
-- Use conversation context to identify which meal the user is referring to
-- Match by food names, timing, and context from previous messages
+- **IMMEDIATELY call findRecentMeals tool**: \`findRecentMeals({ limit: 10 })\`
+- This returns the last 10 meals - **all of them**, not filtered
+- ⚠️ **You CANNOT call analyzeAndUpdateMeal without calling findRecentMeals first**
+- YOU must analyze the returned meals and identify which one the user is referring to
+- Use conversation context: meal type, food names, timing, and previous messages
+- If only one meal exists, that's obviously the one to update
+- If multiple exist, use context clues (e.g., "breakfast" mentioned = find breakfast meal)
 
 **CRITICAL: After calling findRecentMeals, you MUST:**
 1. Describe what meals you found (meal type, time, foods, calories)
 2. Identify which specific meal the user is referring to
 3. Explain what change you'll make (with full updated macros)
 4. Ask for explicit confirmation: "Should I make this change?"
-5. ⚠️ **STOP HERE - DO NOT call updateMeal yet**
+5. ⚠️ **STOP HERE - DO NOT call analyzeAndUpdateMeal yet**
 
-**Only proceed to Step 4 (updateMeal) after the user confirms in their next message.**
+**Only proceed to Step 4 (analyzeAndUpdateMeal) after the user confirms in their next message.**
 
 **EXAMPLE RESPONSE after finding meals:**
 "I found your breakfast from 9:00 AM with 2 sunny side eggs (180 cal). I'll change this to be logged as lunch instead. Should I make this update?"
@@ -392,12 +393,16 @@ From findRecentMeals results, identify which meal they're referring to:
 • To: 1 egg (90 cal | 6g P, 0.5g C, 7g F, 0g Fb)
 Your daily total will change from 795 → 705 calories. Should I make this change?"
 
-**Step 4 - UPDATE:**
-Extract the meal ID from findRecentMeals results and pass it to updateMeal.
+**Step 4 - UPDATE (AI-DRIVEN):**
+Extract the meal ID from findRecentMeals results and pass it to analyzeAndUpdateMeal WITH the user's natural language update request.
+
+⚠️ **NEW AI-DRIVEN APPROACH:**
+The analyzeAndUpdateMeal tool accepts natural language! You don't need to structure the update manually.
+Just pass the user's intent in plain English and AI will handle the rest.
 
 EXAMPLE:
 If findRecentMeals returned: \`{ meals: [{ id: "meal_1730823456789_4aBcXyZ", mealType: "breakfast", foods: [...] }] }\`
-Then call: \`updateMeal({ mealId: "meal_1730823456789_4aBcXyZ", foods: [...updated foods...] })\`
+Then call: \`analyzeAndUpdateMeal({ mealId: "meal_1730823456789_4aBcXyZ", updateRequest: "change to lunch" })\`
 
 CRITICAL: Use the EXACT \`id\` value from the meal object returned by findRecentMeals.
 DO NOT use placeholder IDs like "xyz789", "abc123", "12345", or "mealId_placeholder".
@@ -415,31 +420,39 @@ Which one are you correcting?"
 **If no match found**:
 "Hmm, I don't see pasta in your recent meals. When did you have it?"
 
-### CONCRETE WORKFLOW EXAMPLES:
+### CONCRETE WORKFLOW EXAMPLES (AI-DRIVEN UPDATES):
 
 **Example 1 - Changing meal type:**
 User: "Actually that was lunch not breakfast"
 You: *Call findRecentMeals({ limit: 10 })*
-You: "I found your breakfast from 9:00 AM with 2 sunny side eggs (140 cal | 12g P, 1g C, 10g F, 0g Fb). I'll change this to be logged as lunch instead. The macros will stay the same: 140 cal | 12g P, 1g C, 10g F, 0g Fb. Should I make this update?"
+You: "I found your breakfast from 9:00 AM with 2 sunny side eggs (140 cal | 12g P, 1g C, 10g F, 0g Fb). I'll change this to be logged as lunch instead. The macros will stay the same. Should I make this update?"
 User: "Yes"
-You: *Call updateMeal({ mealId: "abc123", mealType: "lunch" })*
+You: *Call analyzeAndUpdateMeal({ mealId: "abc123", updateRequest: "change to lunch" })*
 You: "✅ Updated! Your meal is now logged as lunch."
 
 **Example 2 - Changing quantity:**
 User: "Wait I only had 1 egg not 2"
-You: *Call findRecentMeals({ containsFood: "egg", limit: 10 })*
+You: *Call findRecentMeals({ limit: 10 })*
 You: "I found your breakfast from 9:00 AM with 2 eggs (180 cal | 12g P, 2g C, 14g F, 0g Fb). I'll update this to 1 egg (90 cal | 6g P, 1g C, 7g F, 0g Fb). Should I make this change?"
 User: "Yes please"
-You: *Call updateMeal({ mealId: "abc123", foods: [{ name: "egg", quantity: "1 egg", calories: 90, protein: 6, carbs: 1, fats: 7, fiber: 0 }] })*
+You: *Call analyzeAndUpdateMeal({ mealId: "abc123", updateRequest: "change to 1 egg instead of 2" })*
 You: "✅ Updated! Your breakfast now shows 1 egg (90 cal | 6g P, 1g C, 7g F, 0g Fb)."
 
 **Example 3 - Adding food to existing meal:**
 User: "I also had toast with that"
 You: *Call findRecentMeals({ limit: 10 })*
-You: "I found your breakfast from 9:00 AM with 2 eggs (180 cal | 12g P, 2g C, 14g F, 0g Fb). I'll add 2 slices of toast (160 cal | 6g P, 30g C, 2g F, 2g Fb). Your breakfast total will become: 2 eggs (180 cal) + toast (160 cal) = 340 cal | 18g P, 32g C, 16g F, 2g Fb. Should I add this?"
+You: "I found your breakfast from 9:00 AM with 2 eggs (180 cal | 12g P, 2g C, 14g F, 0g Fb). I'll add 2 slices of toast (160 cal | 6g P, 30g C, 2g F, 2g Fb). Your breakfast total will become approximately 340 cal. Should I add this?"
 User: "Yes"
-You: *Call updateMeal({ mealId: "abc123", foods: [existing eggs, new toast] })*
+You: *Call analyzeAndUpdateMeal({ mealId: "abc123", updateRequest: "add 2 slices of toast" })*
 You: "✅ Updated! Your breakfast now includes 2 eggs and 2 slices of toast (340 cal | 18g P, 32g C, 16g F, 2g Fb)."
+
+**Example 4 - Flexible updates (only half):**
+User: "I only ate half of that"
+You: *Call findRecentMeals({ limit: 10 })*
+You: "I found your lunch with chicken sandwich (450 cal | 35g P, 40g C, 12g F, 3g Fb). I'll update this to half portion (225 cal | 17.5g P, 20g C, 6g F, 1.5g Fb). Should I make this change?"
+User: "Yes"
+You: *Call analyzeAndUpdateMeal({ mealId: "xyz123", updateRequest: "only ate half" })*
+You: "✅ Updated! Your lunch now shows half portion."
 
 ### MACROS TO SHOW:
 Always display: Calories | Protein (P) | Carbs (C) | Fats (F) | Fiber (Fb)
@@ -458,14 +471,14 @@ Default: 2,400 calories/day (will be customized during onboarding)
 ### TOOLS AVAILABLE:
 - logMeal: Log a new meal (use after confirmation)
 - findRecentMeals: Find meals for editing context
-- updateMeal: Update existing meal (use after confirmation)
+- analyzeAndUpdateMeal: Update existing meal using AI (use after confirmation)
 - getDailySummary: Get today's calorie totals
 
 ### IMPORTANT: ALWAYS RESPOND AFTER CALLING TOOLS
 
 After using ANY tool, you MUST generate a natural language response explaining what you did or found.
 - After logMeal: Confirm what was logged with calorie breakdown
-- After updateMeal: Confirm what was updated and show new values
+- After analyzeAndUpdateMeal: Confirm what was updated and show new values
 - After findRecentMeals: Describe what you found and proceed with the edit
 - NEVER call a tool and stay silent - always follow up with text
 
@@ -641,25 +654,14 @@ app.post(
 
 /*
  * ============================================================================
- * MOCK DATABASE (FOR TESTING ONLY)
+ * PRODUCTION ERROR HANDLING
  * ============================================================================
  *
- * ⚠️ CRITICAL ISSUE: This should NOT be in production code!
- *
- * This is an in-memory fake database that only exists while the server is running.
- * If the server restarts, all data is lost.
- *
- * WHY IT EXISTS: For local development when Firestore credentials aren't configured.
- *
- * WHY IT'S DANGEROUS: If Firestore goes down in production, the app silently
- * uses this mock database instead, and users think their meals are saved when
- * they're actually lost.
- *
- * TODO: Remove all references to mockMealsDB for production deployment.
+ * If Firestore is unavailable, we fail loudly with clear error messages.
+ * This is much safer than silently using mock data.
  *
  * ============================================================================
  */
-const mockMealsDB = {};
 
 /*
  * ============================================================================
@@ -758,36 +760,12 @@ const tools = {
       // Get the current user's ID (set by the chat endpoint)
       const userId = global.currentUserId || "anonymous";
 
-      /*
-       * ⚠️ ISSUE: MOCK DATABASE FALLBACK IN PRODUCTION
-       *
-       * See comment above about mockMealsDB - this should be removed!
-       */
+      // Check if Firestore is available - fail loudly if not
       if (!db) {
-        console.warn(
-          "⚠️  Firestore not available, using mock database"
-        );
-
-        // Generate a fake meal ID
-        const mealId = `meal_${Date.now()}`;
-
-        // Initialize array for this user if it doesn't exist
-        if (!mockMealsDB[userId]) mockMealsDB[userId] = [];
-
-        // Add meal to in-memory mock database
-        mockMealsDB[userId].push({
-          id: mealId,
-          mealType,
-          foods,
-          timestamp,
-          notes,
-        });
-
-        console.log("✅ Meal logged to mock:", mealId);
+        console.error("❌ CRITICAL: Firestore not initialized - cannot log meal");
         return {
-          success: true,
-          mealId,
-          message: "Meal logged successfully",
+          success: false,
+          message: "Database unavailable. Please try again later."
         };
       }
 
@@ -900,7 +878,7 @@ const tools = {
    * 3. Tool returns array of meals with their IDs
    * 4. AI should READ these results and identify which meal user means
    * 5. AI should describe the meal to user and ask for confirmation
-   * 6. AI should then call updateMeal with the real meal ID
+   * 6. AI should then call analyzeAndUpdateMeal with the real meal ID
    *
    * ⚠️ CURRENT BUG:
    * Step 4 above is NOT happening - AI generates empty text after calling
@@ -912,18 +890,11 @@ const tools = {
   findRecentMeals: tool({
     // Tell AI what this tool does and when to use it
     description:
-      "Find recent meals for context. REQUIRED before calling updateMeal. Use when user references a previous meal or wants to edit. Returns actual meal IDs needed for updates.",
+      "Find recent meals for context. REQUIRED before calling analyzeAndUpdateMeal. Use when user references a previous meal or wants to edit. Returns actual meal IDs needed for updates.",
 
     // Define what parameters this tool accepts
     inputSchema: z.object({
-      // Optional: filter meals to only those containing this food
-      // Example: containsFood: "eggs" will only return meals with eggs
-      containsFood: z
-        .string()
-        .optional()
-        .describe("Search for meals containing this food item"),
-
-      // Optional: how many meals to return (default is 10)
+      // How many meals to return (default is 10)
       limit: z
         .number()
         .optional()
@@ -931,55 +902,20 @@ const tools = {
     }),
 
     // This function executes when AI calls the tool
-    execute: async ({ containsFood, limit }, { abortSignal }) => {
+    execute: async ({ limit }, { abortSignal }) => {
       // Log that this tool is being executed
       console.log("🔧 Executing findRecentMeals tool");
 
       // Get the current user's ID (set by the chat endpoint)
       const userId = global.currentUserId || "anonymous";
 
-      /*
-       * ⚠️ ISSUE: MOCK DATABASE FALLBACK IN PRODUCTION
-       *
-       * This code checks if Firestore is available, and if not, uses fake data.
-       * This is DANGEROUS in production because:
-       * - If Firestore goes down, user thinks their data is saved but it's not
-       * - Creates inconsistent state
-       * - Should FAIL LOUDLY instead of silently using mock data
-       *
-       * TODO: Remove this entire if block for production
-       */
+      // Check if Firestore is available - fail loudly if not
       if (!db) {
-        console.warn(
-          "⚠️  Firestore not available, using mock database"
-        );
-
-        // Get this user's meals from the in-memory mock database
-        const userMeals = mockMealsDB[userId] || [];
-
-        // Filter meals if containsFood was specified
-        const filtered = userMeals
-          .filter((meal) => {
-            if (containsFood) {
-              // Check if any food in this meal matches the search
-              const hasFood = meal.foods.some((f) =>
-                f.name
-                  .toLowerCase()
-                  .includes(containsFood.toLowerCase())
-              );
-              // If no match, exclude this meal
-              if (!hasFood) return false;
-            }
-            return true;
-          })
-          .slice(0, limit || 10); // Limit to requested number of meals
-
-        console.log(
-          `✅ Found ${filtered.length} recent meals from mock`
-        );
-
-        // Return meals wrapped in an object
-        return { meals: filtered };
+        console.error("❌ CRITICAL: Firestore not initialized - cannot find meals");
+        return {
+          meals: [],
+          error: "Database unavailable. Please try again later."
+        };
       }
 
       // If we reach here, Firestore IS available
@@ -1009,31 +945,11 @@ const tools = {
           // Get all the data from this meal document
           const data = doc.data();
 
-          /*
-           * CLIENT-SIDE FILTERING (if containsFood was specified)
-           *
-           * ⚠️ ISSUE: This is premature optimization. We're trying to be
-           * "smart" with code-based filtering, but the AI should analyze
-           * ALL recent meals and use its intelligence to determine which
-           * one the user is referring to based on conversation context.
-           *
-           * TODO: Consider removing this filter and letting AI decide
-           */
-          if (containsFood) {
-            // Check if any food in this meal matches the search term
-            const hasFood = data.foods?.some((f) =>
-              f.name
-                .toLowerCase()
-                .includes(containsFood.toLowerCase())
-            );
-            // If no match, skip this meal
-            if (!hasFood) return;
-          }
-
           // Add this meal to our results array
+          // AI will analyze which meal user is referring to based on conversation context
           meals.push({
             // ✅ CRITICAL: Include the Firestore document ID
-            // This is what updateMeal needs to know which meal to update
+            // This is what analyzeAndUpdateMeal needs to know which meal to update
             id: doc.id,
 
             // Meal type (breakfast/lunch/dinner/snack)
@@ -1080,37 +996,43 @@ const tools = {
 
   /*
    * ============================================================================
-   * TOOL: updateMeal
+   * TOOL: analyzeAndUpdateMeal
    * ============================================================================
    *
    * PURPOSE:
-   * Modify an existing meal in the database (change meal type, edit foods, etc.)
+   * AI-driven meal update that handles ANY type of modification flexibly.
    *
    * WHEN AI USES THIS:
-   * - User says: "Actually that was lunch not breakfast"
-   * - User says: "I only had 1 egg not 2"
-   * - User says: "Add toast to my breakfast"
+   * - User says: "Actually that was lunch, not breakfast"
+   * - User says: "I also had a Coke with that"
+   * - User says: "I only ate half of that"
+   * - User says: "There was no cheese actually"
+   * - User says: "Add a note: it had hot sauce"
    *
-   * CRITICAL REQUIREMENT:
-   * The AI MUST call findRecentMeals FIRST to get the real meal ID.
-   * This tool will reject placeholder IDs like "abc123" or "xyz789".
+   * HOW IT WORKS (AI-DRIVEN APPROACH):
+   * 1. Accepts: meal ID + natural language update request
+   * 2. Fetches the existing meal from Firestore
+   * 3. Makes AI call to analyze: existing meal + update request → new meal
+   * 4. AI generates complete new meal object with all macros recalculated
+   * 5. Saves the updated meal to Firestore
+   * 6. Returns success with summary of changes
    *
-   * WHY THIS IS IMPORTANT:
-   * Firestore meal IDs look like: "meal_1730823456789_4aBcXyZ"
-   * If the AI guesses or makes up an ID, it won't find the meal in the database.
+   * WHY AI-DRIVEN?
+   * The old approach required structured parameters (foods array, notes, mealType).
+   * This was too rigid - couldn't handle "I also had a Coke" or "only half".
+   * With AI analysis, we can handle ANY natural language update flexibly.
    *
-   * ⚠️ CURRENT BUG:
-   * The AI isn't calling this tool because it's not completing the workflow
-   * from findRecentMeals (it generates empty text instead of asking for confirmation).
+   * IMPORTANT:
+   * The meal ID MUST come from findRecentMeals - NEVER use placeholder IDs.
    *
    * ============================================================================
    */
-  updateMeal: tool({
+  analyzeAndUpdateMeal: tool({
     // Description tells the AI when and how to use this tool
     description:
-      "Update an existing meal. CRITICAL: You MUST call findRecentMeals first to get the meal ID. NEVER use placeholder IDs. Only use IDs from findRecentMeals results.",
+      "Update an existing meal using AI analysis. Use this for ANY meal modification. Accepts natural language update requests. CRITICAL: You MUST call findRecentMeals first to get the meal ID. NEVER use placeholder IDs.",
 
-    // Define parameters (all updates are optional except mealId)
+    // Define parameters
     inputSchema: z.object({
       // The Firestore document ID (MUST come from findRecentMeals)
       mealId: z
@@ -1119,48 +1041,22 @@ const tools = {
           'The meal ID from findRecentMeals (NEVER use placeholders like "xyz789" or "abc123")'
         ),
 
-      // Optional: new foods array (replaces existing foods completely)
-      foods: z
-        .array(
-          z.object({
-            name: z.string(),
-            quantity: z.string(),
-            calories: z.number(),
-            protein: z.number(),
-            carbs: z.number(),
-            fats: z.number(),
-            fiber: z.number(),
-          })
-        )
-        .optional()
-        .describe("Updated foods array"),
-
-      // Optional: new notes
-      notes: z.string().optional().describe("Updated notes"),
-
-      // Optional: change meal type (breakfast → lunch, etc.)
-      mealType: z
-        .enum(["breakfast", "lunch", "dinner", "snack"])
-        .optional()
-        .describe("Updated meal type"),
+      // Natural language description of what needs to change
+      updateRequest: z
+        .string()
+        .describe(
+          'What the user wants to change, in natural language (e.g., "change to lunch", "add a Coke", "only half", "no cheese", "add note: had hot sauce")'
+        ),
     }),
 
     // This function executes when AI calls the tool
-    execute: async (
-      { mealId, foods, notes, mealType },
-      { abortSignal }
-    ) => {
-      // Log what meal ID we're trying to update
-      console.log(
-        "🔧 Executing updateMeal tool with mealId:",
-        mealId
-      );
+    execute: async ({ mealId, updateRequest }, { abortSignal }) => {
+      console.log("🔧 Executing analyzeAndUpdateMeal tool");
+      console.log("   Meal ID:", mealId);
+      console.log("   Update request:", updateRequest);
 
       /*
        * VALIDATION: Reject placeholder IDs
-       *
-       * Sometimes AI models try to be "clever" and make up IDs instead of
-       * calling findRecentMeals first. This catches that mistake.
        */
       const placeholders = [
         "xyz789",
@@ -1182,9 +1078,6 @@ const tools = {
 
       /*
        * VALIDATION: Check if ID looks real
-       *
-       * Real Firestore IDs are long (20+ characters).
-       * If the ID is short, it's probably fake.
        */
       if (mealId.length < 10) {
         console.error(
@@ -1201,114 +1094,209 @@ const tools = {
       // Get the current user's ID
       const userId = global.currentUserId || "anonymous";
 
-      /*
-       * ⚠️ ISSUE: MOCK DATABASE FALLBACK IN PRODUCTION
-       *
-       * See previous comments about mockMealsDB - this should be removed!
-       */
+      // Check if Firestore is available - fail loudly if not
       if (!db) {
-        console.warn(
-          "⚠️  Firestore not available, using mock database"
+        console.error(
+          "❌ CRITICAL: Firestore not initialized - cannot update meal"
         );
-
-        // Find the meal in the mock database
-        const userMealsList = mockMealsDB[userId] || [];
-        const mealIndex = userMealsList.findIndex(
-          (m) => m.id === mealId
-        );
-
-        // If meal exists in mock, update it
-        if (mealIndex >= 0) {
-          const updates = {};
-          if (foods) updates.foods = foods;
-          if (notes) updates.notes = notes;
-          if (mealType) updates.mealType = mealType;
-
-          // Merge updates into existing meal
-          userMealsList[mealIndex] = {
-            ...userMealsList[mealIndex],
-            ...updates,
-          };
-
-          console.log("✅ Meal updated in mock:", mealId);
-          return {
-            success: true,
-            message: "Meal updated successfully",
-          };
-        }
-
-        // Meal not found in mock
-        return { success: false, message: "Meal not found" };
+        return {
+          success: false,
+          message: "Database unavailable. Please try again later.",
+        };
       }
 
-      // If we reach here, Firestore IS available
       try {
-        // Get reference to the specific meal document
-        // Path: nutrition/{userId}/meals/{mealId}
+        /*
+         * STEP 1: Fetch the existing meal from Firestore
+         */
         const mealRef = db
           .collection("nutrition")
           .doc(userId)
           .collection("meals")
           .doc(mealId);
 
-        // Build the updates object (only include fields that were provided)
-        const updates = {};
+        const mealDoc = await mealRef.get();
+
+        if (!mealDoc.exists) {
+          console.error("❌ Meal not found:", mealId);
+          return {
+            success: false,
+            message:
+              "Meal not found. It may have been deleted or the ID is incorrect.",
+          };
+        }
+
+        const existingMeal = mealDoc.data();
+        console.log("📦 Existing meal fetched:", {
+          mealType: existingMeal.mealType,
+          foods: existingMeal.foods?.map((f) => f.name).join(", "),
+          totalCalories: existingMeal.totalCalories,
+        });
 
         /*
-         * IF FOODS ARE UPDATED: Recalculate total macros
+         * STEP 2: Use AI to analyze the update and generate new meal object
          *
-         * When the foods array changes, we need to recalculate all the totals.
-         * This ensures totalCalories, totalProtein, etc. stay in sync.
+         * We're making a nested AI call here. The outer AI (main chat) called
+         * this tool. Now we're calling another AI to analyze the meal update.
+         *
+         * This AI call will:
+         * - Understand the existing meal structure
+         * - Parse the update request (natural language)
+         * - Generate a complete new meal object with recalculated macros
          */
-        if (foods) {
-          // Sum up all the macros from the foods array
-          const totals = foods.reduce(
-            (acc, food) => ({
-              calories: acc.calories + (food.calories || 0),
-              protein: acc.protein + (food.protein || 0),
-              carbs: acc.carbs + (food.carbs || 0),
-              fats: acc.fats + (food.fats || 0),
-              fiber: acc.fiber + (food.fiber || 0),
-            }),
-            { calories: 0, protein: 0, carbs: 0, fats: 0, fiber: 0 }
-          );
+        const analysisPrompt = `You are a nutrition analysis assistant. Your job is to update meal data based on user requests.
 
-          // Add both the foods array and the totals to the updates
-          updates.foods = foods;
-          updates.totalCalories = totals.calories;
-          updates.totalProtein = totals.protein;
-          updates.totalCarbs = totals.carbs;
-          updates.totalFats = totals.fats;
-          updates.totalFiber = totals.fiber;
+EXISTING MEAL:
+${JSON.stringify(existingMeal, null, 2)}
+
+USER UPDATE REQUEST:
+"${updateRequest}"
+
+INSTRUCTIONS:
+1. Analyze what the user wants to change
+2. Generate a COMPLETE new meal object with ALL fields
+3. If foods changed: recalculate all totals (calories, protein, carbs, fats, fiber)
+4. If user says "half" or "only half": divide quantities and macros by 2
+5. If user says "add [food]": add that food to the foods array AND add its macros to totals
+6. If user says "no [food]": remove that food AND subtract its macros from totals
+7. If user changes meal type: update mealType field
+8. If user adds a note: update notes field
+
+CRITICAL RULES:
+- ALWAYS include all existing foods unless explicitly removed
+- ALWAYS recalculate totals when foods change
+- Use your nutrition knowledge to estimate macros for new foods
+- Preserve the meal structure exactly (same field names)
+
+Return ONLY a valid JSON object with this structure:
+{
+  "mealType": "breakfast" | "lunch" | "dinner" | "snack",
+  "foods": [
+    {
+      "name": "food name",
+      "quantity": "amount (e.g., '2 eggs', '1 cup', '100g')",
+      "calories": number,
+      "protein": number,
+      "carbs": number,
+      "fats": number,
+      "fiber": number
+    }
+  ],
+  "totalCalories": number,
+  "totalProtein": number,
+  "totalCarbs": number,
+  "totalFats": number,
+  "totalFiber": number,
+  "notes": "any notes",
+  "changesSummary": "brief summary of what changed (for user confirmation)"
+}`;
+
+        console.log("🤖 Calling AI to analyze meal update...");
+
+        const analysisResult = await generateText({
+          model: openai("gpt-4o-mini"),
+          messages: [
+            {
+              role: "user",
+              content: analysisPrompt,
+            },
+          ],
+          temperature: 0.3, // Lower temperature for more consistent structured output
+        });
+
+        console.log("✅ AI analysis complete");
+        console.log("📄 Raw AI response:", analysisResult.text);
+
+        /*
+         * STEP 3: Parse the AI's response to get the new meal object
+         */
+        let newMeal;
+        try {
+          // Extract JSON from the response (AI might wrap it in markdown code blocks)
+          let jsonText = analysisResult.text.trim();
+
+          // Remove markdown code blocks if present
+          if (jsonText.startsWith("```json")) {
+            jsonText = jsonText.replace(/```json\n?/g, "").replace(/```\n?/g, "");
+          } else if (jsonText.startsWith("```")) {
+            jsonText = jsonText.replace(/```\n?/g, "");
+          }
+
+          newMeal = JSON.parse(jsonText);
+          console.log("✅ Parsed new meal object:", {
+            mealType: newMeal.mealType,
+            foods: newMeal.foods?.map((f) => f.name).join(", "),
+            totalCalories: newMeal.totalCalories,
+            changesSummary: newMeal.changesSummary,
+          });
+        } catch (parseError) {
+          console.error("❌ Failed to parse AI response as JSON:", parseError);
+          console.error("Raw response was:", analysisResult.text);
+          return {
+            success: false,
+            message:
+              "Failed to analyze the update. Please try rephrasing your request.",
+          };
         }
 
-        // If notes were provided, update them
-        if (notes !== undefined) {
-          updates.notes = notes;
+        /*
+         * STEP 4: Validate the new meal object has required fields
+         */
+        if (
+          !newMeal.mealType ||
+          !newMeal.foods ||
+          !Array.isArray(newMeal.foods)
+        ) {
+          console.error("❌ Invalid meal object from AI:", newMeal);
+          return {
+            success: false,
+            message:
+              "Failed to generate valid meal update. Please try again.",
+          };
         }
 
-        // If meal type was changed, update it
-        if (mealType !== undefined) {
-          updates.mealType = mealType;
-        }
+        /*
+         * STEP 5: Save the updated meal to Firestore
+         */
+        const updates = {
+          mealType: newMeal.mealType,
+          foods: newMeal.foods,
+          totalCalories: newMeal.totalCalories || 0,
+          totalProtein: newMeal.totalProtein || 0,
+          totalCarbs: newMeal.totalCarbs || 0,
+          totalFats: newMeal.totalFats || 0,
+          totalFiber: newMeal.totalFiber || 0,
+          notes: newMeal.notes || "",
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
 
-        // Add timestamp for when this update happened
-        updates.updatedAt =
-          admin.firestore.FieldValue.serverTimestamp();
-
-        // Apply the updates to Firestore
         await mealRef.update(updates);
 
-        // Log success
         console.log("✅ Meal updated in Firestore:", mealId);
+
+        /*
+         * STEP 6: Return success with summary
+         */
         return {
           success: true,
           message: "Meal updated successfully",
+          changesSummary:
+            newMeal.changesSummary || "Your meal has been updated.",
+          updatedMeal: {
+            mealType: newMeal.mealType,
+            totalCalories: newMeal.totalCalories,
+            totalProtein: newMeal.totalProtein,
+            totalCarbs: newMeal.totalCarbs,
+            totalFats: newMeal.totalFats,
+            foods: newMeal.foods.map((f) => f.name).join(", "),
+          },
         };
       } catch (error) {
-        // If something goes wrong (meal doesn't exist, network error, etc.)
-        console.error("❌ Error updating meal in Firestore:", error);
-        return { success: false, message: `Error: ${error.message}` };
+        console.error("❌ Error in analyzeAndUpdateMeal:", error);
+        return {
+          success: false,
+          message: `Error: ${error.message}`,
+        };
       }
     },
   }),
@@ -1354,31 +1342,15 @@ const tools = {
       // Get the current user's ID
       const userId = global.currentUserId || "anonymous";
 
-      /*
-       * ⚠️ ISSUE: MOCK DATABASE FALLBACK IN PRODUCTION
-       *
-       * See previous comments about mockMealsDB - this should be removed!
-       */
+      // Check if Firestore is available - fail loudly if not
       if (!db) {
-        console.warn(
-          "⚠️  Firestore not available, using mock database"
-        );
-
-        // Get all meals for this user from mock database
-        const todayMeals = mockMealsDB[userId] || [];
-
-        // Calculate total calories by summing up all foods in all meals
-        const total = todayMeals.reduce((sum, m) => {
-          const mealCal = m.foods.reduce((s, f) => s + f.calories, 0);
-          return sum + mealCal;
-        }, 0);
-
-        console.log("✅ Daily summary from mock:", total, "calories");
+        console.error("❌ CRITICAL: Firestore not initialized - cannot get daily summary");
         return {
-          totalCalories: total,
+          totalCalories: 0,
           calorieTarget: 2400,
-          progress: total / 2400,
-          mealsCount: todayMeals.length,
+          progress: 0,
+          mealsCount: 0,
+          error: "Database unavailable. Please try again later."
         };
       }
 
@@ -1611,7 +1583,7 @@ app.post("/api/chat", async (req, res) => {
      * This is where the magic happens! We're calling OpenAI GPT-4 with:
      * - The system prompt (instructions for the AI)
      * - The conversation history
-     * - The available tools (logMeal, findRecentMeals, updateMeal, getDailySummary)
+     * - The available tools (logMeal, findRecentMeals, analyzeAndUpdateMeal, getDailySummary)
      *
      * HOW MULTI-STEP EXECUTION WORKS:
      * 1. AI reads the message and decides if it needs to call a tool
@@ -1619,7 +1591,7 @@ app.post("/api/chat", async (req, res) => {
      * 3. Tool executes and returns results
      * 4. AI reads the tool results
      * 5. AI decides what to do next:
-     *    - Call another tool? (e.g., updateMeal)
+     *    - Call another tool? (e.g., analyzeAndUpdateMeal)
      *    - Generate a text response to the user?
      * 6. This loops up to maxSteps times (10 in our case)
      *
@@ -1664,6 +1636,74 @@ app.post("/api/chat", async (req, res) => {
 
     // Log that the AI request succeeded (but this doesn't mean we got useful text!)
     console.log("✅ AI request successful");
+
+    /*
+     * ============================================================================
+     * DEBUG LOGGING - INVESTIGATE AI EMPTY TEXT BUG
+     * ============================================================================
+     *
+     * Adding extensive logging to understand why AI generates empty text after
+     * calling findRecentMeals.
+     *
+     * ============================================================================
+     */
+    console.log("\n🔍 DEBUG: Starting result analysis...");
+    console.log("📊 result.text:", result.text ? `"${result.text.substring(0, 100)}..."` : "EMPTY or null");
+    console.log("📊 result.steps count:", result.steps?.length || 0);
+
+    // Log each step in detail
+    if (result.steps && result.steps.length > 0) {
+      result.steps.forEach((step, index) => {
+        console.log(`\n  Step ${index + 1}:`);
+        console.log(`    - toolCalls: ${step.toolCalls?.length || 0} calls`);
+        if (step.toolCalls && step.toolCalls.length > 0) {
+          step.toolCalls.forEach((tc, tcIndex) => {
+            console.log(`      [${tcIndex}] Tool: ${tc.toolName}`);
+            console.log(`          Args: ${JSON.stringify(tc.args).substring(0, 100)}...`);
+          });
+        }
+
+        console.log(`    - toolResults: ${step.toolResults?.length || 0} results`);
+        if (step.toolResults && step.toolResults.length > 0) {
+          step.toolResults.forEach((tr, trIndex) => {
+            console.log(`      [${trIndex}] Tool: ${tr.toolName}`);
+            console.log(`          Result structure: ${JSON.stringify(tr.result).substring(0, 200)}...`);
+
+            // Special logging for findRecentMeals
+            if (tr.toolName === 'findRecentMeals' && tr.result?.meals) {
+              console.log(`          ✅ findRecentMeals returned ${tr.result.meals.length} meals`);
+              tr.result.meals.forEach((meal, mealIndex) => {
+                console.log(`            [${mealIndex}] ${meal.mealType} - ${meal.foods?.map(f => f.name).join(', ')}`);
+              });
+            }
+          });
+        }
+
+        console.log(`    - text: ${step.text ? `"${step.text.substring(0, 100)}..."` : "EMPTY or null"}`);
+      });
+    }
+
+    // Log response.messages structure
+    console.log("\n📊 result.response.messages count:", result.response?.messages?.length || 0);
+    if (result.response?.messages) {
+      result.response.messages.forEach((msg, index) => {
+        console.log(`  Message ${index + 1}:`);
+        console.log(`    - role: ${msg.role}`);
+        if (typeof msg.content === 'string') {
+          console.log(`    - content (string): "${msg.content.substring(0, 100)}..."`);
+        } else if (Array.isArray(msg.content)) {
+          console.log(`    - content (array): ${msg.content.length} parts`);
+          msg.content.forEach((part, partIndex) => {
+            console.log(`      [${partIndex}] type: ${part.type}`);
+            if (part.type === 'text' && part.text) {
+              console.log(`           text: "${part.text.substring(0, 100)}..."`);
+            }
+          });
+        }
+      });
+    }
+
+    console.log("\n🔍 DEBUG: Result analysis complete\n");
 
     /*
      * ============================================================================
@@ -1781,16 +1821,18 @@ app.post("/api/chat", async (req, res) => {
           message = "✅ Your meal has been logged!";
         }
       } else if (
-        toolCalls.some((tc) => tc.toolName === "updateMeal")
+        toolCalls.some((tc) => tc.toolName === "analyzeAndUpdateMeal")
       ) {
-        // AI called updateMeal - provide simple confirmation
+        // AI called analyzeAndUpdateMeal - provide confirmation with summary
         const updateResult = toolResults.find(
-          (tr) => tr.toolName === "updateMeal"
+          (tr) => tr.toolName === "analyzeAndUpdateMeal"
         );
         if (updateResult?.result?.success === false) {
           message = `❌ Failed to update meal: ${updateResult.result.message}`;
         } else {
-          message = "✅ Your meal has been updated!";
+          // Include the AI-generated changesSummary if available
+          const summary = updateResult?.result?.changesSummary;
+          message = summary ? `✅ ${summary}` : "✅ Your meal has been updated!";
         }
       } else if (
         toolCalls.some((tc) => tc.toolName === "findRecentMeals")
@@ -1815,6 +1857,14 @@ app.post("/api/chat", async (req, res) => {
         const findResult = toolResults.find(
           (tr) => tr.toolName === "findRecentMeals"
         );
+
+        // DEBUG: Log the actual structure we're checking
+        console.log("\n🔍 DEBUG: Fallback for findRecentMeals");
+        console.log("📊 findResult exists:", !!findResult);
+        console.log("📊 findResult structure:", JSON.stringify(findResult, null, 2).substring(0, 500));
+        console.log("📊 findResult.result exists:", !!findResult?.result);
+        console.log("📊 findResult.result.meals exists:", !!findResult?.result?.meals);
+        console.log("📊 findResult.result.meals.length:", findResult?.result?.meals?.length || 0);
 
         // Check if meals were found
         if (findResult?.result?.meals?.length > 0) {

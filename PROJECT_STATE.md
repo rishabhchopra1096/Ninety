@@ -21,6 +21,7 @@ See complete vision: `PRD.md` (383 lines)
 ### What Works
 
 **Authentication:**
+
 - ✅ Email/password signup via Firebase Auth
 - ✅ Email/password login
 - ✅ Logout functionality
@@ -29,6 +30,7 @@ See complete vision: `PRD.md` (383 lines)
 - ✅ Multi-user support (separate data per user)
 
 **Chat & Persistence:**
+
 - ✅ Chat interface with Ava (AI coach)
 - ✅ Message persistence to Firestore
 - ✅ Chat history loads after logout/login
@@ -37,6 +39,7 @@ See complete vision: `PRD.md` (383 lines)
 - ✅ No duplicate messages on reload
 
 **Voice Recording:**
+
 - ✅ Microphone button in chat
 - ✅ Voice recording with expo-audio v1.x
 - ✅ Permission handling (iOS)
@@ -45,6 +48,7 @@ See complete vision: `PRD.md` (383 lines)
 - ✅ Transcribed text sent to Ava
 
 **Testing Results:**
+
 ```
 Tested on: iOS Simulator
 Test user: ninetyuser1@gmail.com
@@ -60,6 +64,7 @@ Test user: ninetyuser1@gmail.com
 ### What Was Built
 
 **Complete CalAI-Inspired Design System:**
+
 - ✅ Analyzed 20+ CalAI screenshots and extracted all design elements
 - ✅ Implemented black/white/orange color palette matching CalAI
 - ✅ Created 11 production-ready components
@@ -68,24 +73,28 @@ Test user: ninetyuser1@gmail.com
 
 **Component Library (11 Components):**
 
-*Core Components:*
+_Core Components:_
+
 - ✅ Button (primary, secondary, ghost variants)
 - ✅ Card (flexible container with elevation)
 - ✅ ProgressRing (animated circular progress)
 - ✅ ProgressBar (animated linear progress)
 
-*Content Components:*
+_Content Components:_
+
 - ✅ StatCard (metric display with progress ring)
 - ✅ NutritionCard (meal/food display)
 - ✅ ActivityCard (workout/activity display)
 
-*Utility Components:*
+_Utility Components:_
+
 - ✅ Badge (status indicators, streak badges)
 - ✅ IconButton (circular icon buttons + FAB)
 - ✅ Avatar (user photos, initials, icons)
 - ✅ EmptyState (empty list states)
 
 **Theme System (`src/constants/theme.ts`):**
+
 - ✅ CalAI color palette (black #000000, orange #FF6B00, white #FFFFFF)
 - ✅ Extended neutral grays (50-900)
 - ✅ Typography scale (display 72px to caption 12px)
@@ -96,6 +105,7 @@ Test user: ninetyuser1@gmail.com
 - ✅ Accessibility constants (touch targets, contrast ratios)
 
 **Documentation:**
+
 - ✅ `/docs/CALAI_ANALYSIS.md` - Screenshot-by-screenshot design analysis
 - ✅ `/docs/DESIGN_SYSTEM.md` - Complete design system reference
 - ✅ `/docs/COMPONENT_GUIDE.md` - Component usage guide with examples
@@ -106,16 +116,24 @@ Test user: ninetyuser1@gmail.com
 **When building new features, ALWAYS:**
 
 1. **Import components instead of building custom UI:**
+
 ```tsx
-import { Button, Card, ProgressRing, NutritionCard } from '@/components';
+import {
+  Button,
+  Card,
+  ProgressRing,
+  NutritionCard,
+} from "@/components";
 ```
 
 2. **Use theme values instead of hardcoded colors/spacing:**
+
 ```tsx
-import { colors, spacing, typography } from '@/constants/theme';
+import { colors, spacing, typography } from "@/constants/theme";
 ```
 
 3. **Reference the component guide for examples:**
+
    - Check `/docs/COMPONENT_GUIDE.md` for props and usage
    - See complete dashboard example in the guide
    - Follow best practices section
@@ -128,17 +146,20 @@ import { colors, spacing, typography } from '@/constants/theme';
 ### Key Design Decisions
 
 **Visual Design:**
+
 - **Minimalism:** Clean black/white with orange accents (like CalAI)
 - **Typography:** Large, bold headers (72px display for calorie numbers)
 - **Components:** Card-based layouts with subtle shadows
 - **Progress:** Circular rings for goals (protein, carbs, fats)
 
 **Interaction Model (Hybrid):**
+
 - **Chat-first:** Complex logging happens through conversation
 - **Direct UI:** Quick actions like photo uploads, viewing data
 - **Balance:** Visual richness without overwhelming
 
 **Colors:**
+
 ```
 Primary:    #000000 (Black)
 Secondary:  #FF6B00 (Orange - accents, CTAs, streaks)
@@ -158,20 +179,25 @@ Macros:
 ### Testing the Design System
 
 To verify components work:
+
 ```tsx
 // Create a test screen
-import { Button, Card, ProgressRing } from '@/components';
-import { colors, spacing } from '@/constants/theme';
+import { Button, Card, ProgressRing } from "@/components";
+import { colors, spacing } from "@/constants/theme";
 
 export function TestScreen() {
   return (
     <View style={{ padding: spacing[5] }}>
       <Card elevation="md" padding="large">
-        <ProgressRing size="large" progress={0.75} color={colors.secondary}>
-          <Text style={{ fontSize: 24, fontWeight: '600' }}>75%</Text>
+        <ProgressRing
+          size="large"
+          progress={0.75}
+          color={colors.secondary}
+        >
+          <Text style={{ fontSize: 24, fontWeight: "600" }}>75%</Text>
         </ProgressRing>
 
-        <Button variant="primary" onPress={() => alert('Works!')}>
+        <Button variant="primary" onPress={() => alert("Works!")}>
           Test Button
         </Button>
       </Card>
@@ -183,6 +209,7 @@ export function TestScreen() {
 ### What's NOT Done Yet (Optional)
 
 These are nice-to-haves, not blockers:
+
 - ❌ ChatScreen colors not updated to CalAI style (still uses old green)
 - ❌ Tab bar icons not added (needs icon library installed)
 - ❌ Tab bar styling not updated to CalAI style
@@ -194,6 +221,7 @@ These are nice-to-haves, not blockers:
 ## 📁 Architecture Overview
 
 ### Technology Stack
+
 - **Frontend:** React Native 0.81.4 + Expo SDK 54
 - **Language:** JavaScript (not TypeScript for screens)
 - **Navigation:** React Navigation v7 (Stack + Bottom Tabs)
@@ -263,6 +291,7 @@ Ninety/
 ## 🔥 Firebase Configuration
 
 ### Project Details
+
 - **Project ID:** ninety-ed5a0
 - **Region:** us-central1 (default)
 - **Auth Provider:** Email/Password ✅ Enabled
@@ -283,6 +312,7 @@ conversations/{userId}/messages/{messageId}
 ```
 
 ### Firebase JS SDK (Not Native)
+
 - Using `firebase` package (v12.3.0)
 - NOT using `react-native-firebase` (avoids dev client rebuilds)
 - AsyncStorage for auth persistence
@@ -292,20 +322,25 @@ conversations/{userId}/messages/{messageId}
 ## 🚨 Critical Issues Fixed
 
 ### Issue 1: Theme Import Error ✅ FIXED
+
 **Problem:** Auth screens importing `theme` object that doesn't exist
+
 ```javascript
 // ❌ WRONG (old code)
-import { theme } from '../../constants/theme';
-backgroundColor: theme.colors.background
+import { theme } from "../../constants/theme";
+backgroundColor: theme.colors.background;
 
 // ✅ FIXED
-import { colors, spacing, borderRadius } from '../../constants/theme';
-backgroundColor: colors.background
+import { colors, spacing, borderRadius } from "../../constants/theme";
+backgroundColor: colors.background;
 ```
+
 **Files Fixed:** LoginScreen.js, SignupScreen.js (lines 15 + all StyleSheet refs)
 
 ### Issue 2: Voice Recording API Change ✅ FIXED
+
 **Problem:** expo-audio v1.x has different API than expo-av
+
 ```javascript
 // ❌ OLD (expo-av)
 import { Audio } from 'expo-audio';
@@ -318,9 +353,11 @@ const audioRecorder = useAudioRecorder();
 await AudioModule.requestRecordingPermissionsAsync();
 await audioRecorder.record();
 ```
+
 **File Fixed:** ChatScreen.tsx (lines 4, 31-32, 231-295)
 
 ### Issue 3: Railway API Sleep
+
 **Status:** API working (200 responses in logs)
 **URL:** https://ninety-production.up.railway.app/api/chat
 **Endpoints:** `/api/chat`, `/api/transcribe`
@@ -332,12 +369,14 @@ await audioRecorder.record();
 ### Where Logs Are Added
 
 **App Lifecycle:**
+
 ```javascript
 App.tsx: "🚀 Ninety App Starting..."
 firebase.js: "🔥 Initializing Firebase..." → "✅ Firebase initialized"
 ```
 
 **Authentication Flow:**
+
 ```javascript
 AuthContext.js:
   Signup: "📝 SIGNUP STARTED" → "✅ SIGNUP COMPLETE"
@@ -347,6 +386,7 @@ AuthContext.js:
 ```
 
 **Navigation:**
+
 ```javascript
 AppNavigator.tsx:
   "⏳ Checking authentication state..."
@@ -354,6 +394,7 @@ AppNavigator.tsx:
 ```
 
 **Chat & Data:**
+
 ```javascript
 ChatScreen.tsx:
   "📚 Loading chat history for user: {uid}"
@@ -363,6 +404,7 @@ ChatScreen.tsx:
 ```
 
 **Voice Recording:**
+
 ```javascript
 ChatScreen.tsx:
   "🎙️ Requesting audio permission..."
@@ -379,21 +421,25 @@ See full logging guide: `LOGGING_GUIDE.md`
 ## ⚠️ Known Limitations (Not Bugs)
 
 ### Onboarding
+
 - Currently just shows welcome message
 - PRD requires conversational onboarding (Phase 2+)
 - Sequential questions: goals, stats, activities, meals, optional features
 
 ### Activity Tracking
+
 - Tab named "Workout" but should be "Activity" (per PRD)
 - All activity screens are placeholders
 - Need unified feed for ALL activities (gym, dance, walking, etc.)
 
 ### Nutrition & Progress
+
 - All placeholder screens
 - No meal logging, grocery lists, or meal plans yet
 - No progress photos or measurement tracking yet
 
 ### AI Capabilities
+
 - Basic chat works
 - No function calling yet (logActivity, logMeal, etc.)
 - No onboarding conversation flow
@@ -405,17 +451,20 @@ See full logging guide: `LOGGING_GUIDE.md`
 ## 🎯 Phase 2: AI Health Coach Prompt (Next Steps)
 
 ### Goals
+
 1. Write "mega prompt" for Ava that handles:
+
    - Onboarding questions (sequential, required fields)
    - Activity logging detection ("went for a run" → extract type, duration)
    - Meal logging detection ("had chicken for lunch" → extract meal, calories)
    - Health coaching (adaptive, not prescriptive)
 
 2. Add function calling:
+
    ```javascript
-   logActivity({ type, duration, intensity, notes })
-   logMeal({ mealType, foods, calories, photoUrl })
-   logMeasurement({ type, value, unit })
+   logActivity({ type, duration, intensity, notes });
+   logMeal({ mealType, foods, calories, photoUrl });
+   logMeasurement({ type, value, unit });
    ```
 
 3. Implement onboarding state tracking
@@ -424,12 +473,15 @@ See full logging guide: `LOGGING_GUIDE.md`
    - Save responses to Firestore
 
 ### PRD Requirements for AI
+
 **Chat-First Everything:**
+
 - "I just finished chest day, hit 185 on bench" → Auto-log workout
 - "Had chicken and rice for lunch" → Auto-log meal
 - Photo upload → AI analyzes (food vs progress vs form check)
 
 **Adaptive Coaching:**
+
 - User says "gym": gym-specific advice
 - User says "dance class": dance-specific advice
 - Support ALL activities, not just gym
@@ -439,6 +491,7 @@ See full logging guide: `LOGGING_GUIDE.md`
 ## 🧪 How to Test (Post-Compaction)
 
 ### Quick Verification Test
+
 ```bash
 cd /Users/rishabhchopra/Documents/GitHub/ninety/Ninety
 npm start
@@ -446,6 +499,7 @@ npm start
 ```
 
 **Expected Logs:**
+
 ```
 🚀 Ninety App Starting...
 ✅ Firebase initialized successfully
@@ -454,12 +508,14 @@ npm start
 ```
 
 **Test Flow:**
+
 1. Sign up with new email → Should navigate to chat
 2. Send message "Test" → Should get AI response + save to Firestore
 3. Log out → Should return to login
 4. Log back in → Chat history should load (✅ Loaded X messages)
 
 ### Voice Recording Test
+
 1. Tap microphone button
 2. Should see permission request (if first time)
 3. Recording overlay appears at top
@@ -470,6 +526,7 @@ npm start
 ## 🐛 Debugging Tips
 
 ### Firebase Connection Issues
+
 ```javascript
 // Check Firebase is initialized
 console logs should show: "✅ Firebase initialized successfully"
@@ -480,6 +537,7 @@ console logs should show: "✅ Firebase initialized successfully"
 ```
 
 ### Auth Not Working
+
 ```javascript
 // Check logs for:
 "🔐 Setting up auth state listener..."
@@ -491,6 +549,7 @@ console logs should show: "✅ Firebase initialized successfully"
 ```
 
 ### Messages Not Persisting
+
 ```javascript
 // Check logs for:
 "✅ Message saved to Firestore: {messageId}"
@@ -503,6 +562,7 @@ console logs should show: "✅ Firebase initialized successfully"
 ```
 
 ### Voice Recording Fails
+
 ```javascript
 // Check logs for:
 "🎙️ Requesting audio permission..."
@@ -519,6 +579,7 @@ console logs should show: "✅ Firebase initialized successfully"
 ## 📦 Dependencies & Versions
 
 ### Key Packages
+
 ```json
 {
   "expo": "~54.0.10",
@@ -536,6 +597,7 @@ console logs should show: "✅ Firebase initialized successfully"
 ```
 
 ### Install Commands (if needed)
+
 ```bash
 npm install @react-native-async-storage/async-storage
 npm install react-native-pager-view
@@ -546,13 +608,16 @@ npm install react-native-pager-view
 ## 🔑 Environment Variables
 
 ### .env.local (Required)
+
 ```env
 OPENAI_API_KEY=sk-proj-...
 EXPO_PUBLIC_API_BASE_URL=https://ninety-production.up.railway.app
 ```
 
 ### Firebase Config
+
 Already hardcoded in `src/config/firebase.js`:
+
 - Project: ninety-ed5a0
 - API Key: AIzaSyCyawmM_wrUwvOKbOnJccmnAB_z6MX7_g0
 - Auth Domain: ninety-ed5a0.firebaseapp.com
@@ -562,24 +627,32 @@ Already hardcoded in `src/config/firebase.js`:
 ## 🎨 Design System
 
 ### Theme Location
+
 `src/constants/theme.ts` - Exports individual constants (NOT a theme object)
 
 ### Import Pattern
+
 ```javascript
 // ✅ CORRECT
-import { colors, spacing, typography, borderRadius } from '../../constants/theme';
+import {
+  colors,
+  spacing,
+  typography,
+  borderRadius,
+} from "../../constants/theme";
 
 // ❌ WRONG
-import { theme } from '../../constants/theme';
+import { theme } from "../../constants/theme";
 // (theme object doesn't exist!)
 ```
 
 ### Color Palette
+
 ```javascript
-primary: '#10A37F'      // Teal green
-secondary: '#1A73E8'    // Blue
-success: '#58CC02'      // Bright green
-error: '#FF4B4B'        // Red
+primary: "#10A37F"; // Teal green
+secondary: "#1A73E8"; // Blue
+success: "#58CC02"; // Bright green
+error: "#FF4B4B"; // Red
 ```
 
 ---
@@ -587,18 +660,21 @@ error: '#FF4B4B'        // Red
 ## 💡 Development Notes
 
 ### Code Style
+
 - **Screens:** JavaScript (.js), not TypeScript
 - **Utils/Config:** TypeScript (.ts)
 - **Navigation:** TypeScript (.tsx)
 - **No Redux/MobX:** Using React hooks only
 
 ### Logging Philosophy
+
 - Strategic logs at decision points
 - ✅/❌ prefixes for success/error
 - 🔥🔐💬📱 emoji prefixes for categories
-- Indented sub-steps with "   ✅"
+- Indented sub-steps with " ✅"
 
 ### Git Status
+
 - **Not a git repo** (checked, no .git/config)
 - Consider: `git init` before Phase 2
 
@@ -616,12 +692,14 @@ error: '#FF4B4B'        // Red
 ## 🚀 Immediate Next Steps After Compaction
 
 1. **Verify everything still works:**
+
    ```bash
    npm start
    # Test: signup → chat → logout → login
    ```
 
 2. **Start Phase 2:**
+
    - Write AI mega prompt for Ava
    - Add onboarding conversation flow
    - Implement function calling (logActivity, logMeal)
@@ -659,23 +737,27 @@ error: '#FF4B4B'        // Red
 ### What Works ✅
 
 **Tool Calling Infrastructure:**
+
 - ✅ Vercel AI SDK v5 with `generateText()` and `maxSteps: 10`
 - ✅ Multi-step tool execution with automatic tool calling
 - ✅ Message extraction from `result.response.messages` (handles empty text after tools)
 - ✅ Context-aware fallback messages based on tool type
 
 **Implemented Tools:**
+
 1. ✅ `logMeal` - Logs meals to Firestore after user confirmation
 2. ✅ `findRecentMeals` - Searches recent meals (by food name, limit)
 3. ✅ `updateMeal` - Updates existing meals (foods, notes, mealType)
 4. ✅ `getDailySummary` - Retrieves daily nutrition totals
 
 **Basic Food Logging:**
+
 - ✅ User says "I had 2 eggs for breakfast" → AI extracts nutrition → asks confirmation → logs to Firestore
 - ✅ Firestore structure: `nutrition/{userId}/meals/{mealId}` with foods array, totalCalories, mealType, timestamp
 - ✅ Meals persist across sessions
 
 **System Prompt Enhancements:**
+
 - ✅ Sequential workflow enforced (findRecentMeals → describe → confirm → updateMeal)
 - ✅ Explicit instructions to ALWAYS respond after calling tools
 - ✅ Concrete examples of meal update workflows
@@ -685,12 +767,14 @@ error: '#FF4B4B'        // Red
 **Bug:** Tool results extraction from wrong location in server.js:703-704
 
 **Symptoms:**
+
 - Backend logs: `✅ Found 1 recent meals from Firestore`
 - Frontend receives: `I couldn't find any recent meals matching your request`
 - Fallback message logic fails because `toolResults` array is empty
 
 **Root Cause:**
 Lines 703-704 extract from properties that don't exist at top level in AI SDK v5:
+
 ```javascript
 // CURRENT (BROKEN):
 const toolCalls = result.toolCalls || [];
@@ -698,6 +782,7 @@ const toolResults = result.toolResults || [];
 ```
 
 In Vercel AI SDK v5, these exist in `result.steps[]`:
+
 ```javascript
 result.steps = [
   { toolCalls: [...], toolResults: [...] },
@@ -706,13 +791,17 @@ result.steps = [
 ```
 
 **Verified Fix:**
+
 ```javascript
 // CORRECT:
-const toolCalls = result.steps?.flatMap(step => step.toolCalls || []) || [];
-const toolResults = result.steps?.flatMap(step => step.toolResults || []) || [];
+const toolCalls =
+  result.steps?.flatMap((step) => step.toolCalls || []) || [];
+const toolResults =
+  result.steps?.flatMap((step) => step.toolResults || []) || [];
 ```
 
 **Evidence This Is Correct:**
+
 - Line 744 already uses this pattern successfully: `result.steps?.filter(step => step.toolCalls).flatMap(step => step.toolCalls)`
 - Agent verification confirmed AI SDK v5 structure
 - Backend logs prove data exists in the execution steps
@@ -728,14 +817,17 @@ const toolResults = result.steps?.flatMap(step => step.toolResults || []) || [];
 ### Testing Scenarios
 
 **Working Scenarios:**
+
 - ✅ "I had 2 sunny side eggs for breakfast" → AI estimates nutrition → confirms → logs
 - ✅ "I had chicken and rice for lunch" → AI asks portion sizes → estimates calories → logs
 
 **Currently Broken (Will Fix After Bug Fix):**
+
 - ❌ "Actually that was lunch not breakfast" → Should find meal → describe it → confirm → update
   - Currently says "couldn't find" even when meal exists
 
 **Next Tests After Fix:**
+
 - Update meal type: "That was lunch not breakfast"
 - Update meal contents: "Actually I had 3 eggs not 2"
 - Update with notes: "Add a note that it had hot sauce"
@@ -743,6 +835,7 @@ const toolResults = result.steps?.flatMap(step => step.toolResults || []) || [];
 ### Key Implementation Details
 
 **Message Extraction Logic (server.js:644-672):**
+
 ```javascript
 // Try simple case first
 let message = result.text || "";
@@ -750,38 +843,43 @@ let message = result.text || "";
 // If no text, extract from all assistant messages
 if (!message || !message.trim()) {
   message = result.response.messages
-    .filter(msg => msg.role === 'assistant')
-    .map(msg => {
+    .filter((msg) => msg.role === "assistant")
+    .map((msg) => {
       // Handle string content
-      if (typeof msg.content === 'string') return msg.content;
+      if (typeof msg.content === "string") return msg.content;
       // Handle array content (mixed text and tool calls)
       if (Array.isArray(msg.content)) {
         return msg.content
-          .filter(part => part.type === 'text')
-          .map(part => part.text)
-          .join(' ');
+          .filter((part) => part.type === "text")
+          .map((part) => part.text)
+          .join(" ");
       }
-      return '';
+      return "";
     })
-    .filter(text => text.trim())
-    .join('\n');
+    .filter((text) => text.trim())
+    .join("\n");
 }
 ```
 
 **Context-Aware Fallback (server.js:703-737):**
+
 ```javascript
 if (!message || !message.trim()) {
   // Extract toolCalls and toolResults (BUG: wrong location!)
-  const toolCalls = result.toolCalls || [];  // ← FIX THIS
-  const toolResults = result.toolResults || [];  // ← FIX THIS
+  const toolCalls = result.toolCalls || []; // ← FIX THIS
+  const toolResults = result.toolResults || []; // ← FIX THIS
 
-  if (toolCalls.some(tc => tc.toolName === 'logMeal')) {
+  if (toolCalls.some((tc) => tc.toolName === "logMeal")) {
     message = "✅ Your meal has been logged!";
-  } else if (toolCalls.some(tc => tc.toolName === 'updateMeal')) {
+  } else if (toolCalls.some((tc) => tc.toolName === "updateMeal")) {
     message = "✅ Your meal has been updated!";
-  } else if (toolCalls.some(tc => tc.toolName === 'findRecentMeals')) {
+  } else if (
+    toolCalls.some((tc) => tc.toolName === "findRecentMeals")
+  ) {
     // Provide detailed fallback with meal details
-    const findResult = toolResults.find(tr => tr.toolName === 'findRecentMeals');
+    const findResult = toolResults.find(
+      (tr) => tr.toolName === "findRecentMeals"
+    );
     if (findResult?.result?.meals?.length > 0) {
       const meal = findResult.result.meals[0];
       message = `I found your ${meal.mealType} from ${timeStr}...`;
@@ -793,6 +891,7 @@ if (!message || !message.trim()) {
 ```
 
 **System Prompt Sequential Workflow (server.js:159-227):**
+
 ```javascript
 **CRITICAL: After calling findRecentMeals, you MUST:**
 1. Describe what meals you found (meal type, time, foods, calories)
@@ -848,6 +947,7 @@ After extensive debugging and user testing, we discovered that meal updates STIL
 #### 🚨 NEW CRITICAL ISSUES DISCOVERED (Current Session)
 
 **Evidence from Production Logs:**
+
 ```
 🔧 Executing findRecentMeals tool
 ✅ Found 2 recent meals from Firestore
@@ -860,6 +960,7 @@ After extensive debugging and user testing, we discovered that meal updates STIL
 #### Problem 1: AI Not Analyzing Tool Results ⚠️ CRITICAL
 
 **What's Happening:**
+
 - User says: "Actually that was lunch not breakfast"
 - AI calls `findRecentMeals` → Returns 2 meals ✅
 - AI generates NO TEXT after calling the tool ❌
@@ -867,6 +968,7 @@ After extensive debugging and user testing, we discovered that meal updates STIL
 
 **Root Cause:**
 The AI is not reading the tool results and generating a response. The Vercel AI SDK's `generateText()` function:
+
 1. Calls the tool
 2. Gets results back
 3. Should have AI analyze results and respond
@@ -876,6 +978,7 @@ The AI is not reading the tool results and generating a response. The Vercel AI 
 **Expected vs Actual Workflow:**
 
 Expected:
+
 ```
 1. AI calls findRecentMeals
 2. Tool returns: {meals: [{id: "abc123", mealType: "breakfast", ...}, ...]}
@@ -887,6 +990,7 @@ Expected:
 ```
 
 Actual:
+
 ```
 1. AI calls findRecentMeals
 2. Tool returns: {meals: [{id: "abc123", ...}, ...]}
@@ -912,7 +1016,9 @@ Step 6: AI calls updateMeal with the correct ID
 **Location:** Lines 741-754
 
 ```javascript
-const findResult = toolResults.find(tr => tr.toolName === 'findRecentMeals');
+const findResult = toolResults.find(
+  (tr) => tr.toolName === "findRecentMeals"
+);
 if (findResult?.result?.meals?.length > 0) {
   // Show meal details
 } else {
@@ -923,28 +1029,38 @@ if (findResult?.result?.meals?.length > 0) {
 **Issue:** We're checking `findResult?.result?.meals` but the actual structure of `toolResults` might be different. The tool returns `{meals: [...]}` but we may be accessing it incorrectly.
 
 **Need:** Add debug logging to see actual structure:
+
 ```javascript
-console.log('🔍 DEBUG toolResults:', JSON.stringify(toolResults, null, 2));
-console.log('🔍 DEBUG findResult:', JSON.stringify(findResult, null, 2));
+console.log(
+  "🔍 DEBUG toolResults:",
+  JSON.stringify(toolResults, null, 2)
+);
+console.log(
+  "🔍 DEBUG findResult:",
+  JSON.stringify(findResult, null, 2)
+);
 ```
 
 #### Problem 3: Mock Database in Production Code ⚠️ CRITICAL
 
 **Locations:**
+
 - Lines 429-440 (findRecentMeals)
 - Lines 365-384 (logMeal)
 - Lines 510-528 (updateMeal)
 - Lines 590-620 (getDailySummary)
 
 **The Pattern:**
+
 ```javascript
 if (!db) {
-  console.warn('⚠️  Firestore not available, using mock database');
+  console.warn("⚠️  Firestore not available, using mock database");
   // Returns fake data instead of failing
 }
 ```
 
 **Why This Is Dangerous:**
+
 - If Firestore goes down, app silently uses fake data
 - User thinks meals are saved but they're not
 - Creates inconsistent state between what AI thinks happened and reality
@@ -958,7 +1074,7 @@ if (!db) {
 
 ```javascript
 if (containsFood) {
-  const hasFood = data.foods?.some(f =>
+  const hasFood = data.foods?.some((f) =>
     f.name.toLowerCase().includes(containsFood.toLowerCase())
   );
   if (!hasFood) return;
@@ -974,6 +1090,7 @@ if (containsFood) {
 ### Current Status: BLOCKED
 
 **Meal Update Workflow:** NOT WORKING
+
 - Basic meal logging works ✅
 - Finding recent meals works ✅
 - But AI doesn't analyze which meal to update ❌
@@ -982,16 +1099,19 @@ if (containsFood) {
 **Next Steps:**
 
 1. **Add comprehensive inline comments to server.js**
+
    - Line-by-line comments explaining what each line does
    - Large comment blocks at top of each function/section
    - Help understand code flow to identify remaining issues
 
 2. **Add debug logging to investigate toolResults structure**
+
    - Log exact structure of `toolResults` after findRecentMeals
    - Understand why fallback thinks no meals were found
    - Fix the structure mismatch
 
 3. **Implement second AI analysis step**
+
    - After findRecentMeals returns results
    - Make another AI call to identify specific meal
    - Pass meals + conversation history
@@ -999,6 +1119,7 @@ if (containsFood) {
    - Then proceed with update workflow
 
 4. **Remove mock database patterns**
+
    - Production app should fail loudly if Firestore unavailable
    - Remove all `if (!db)` fallback logic
 
@@ -1034,6 +1155,7 @@ if (containsFood) {
 
 **API URL:** https://ninety-production.up.railway.app
 **Endpoints:**
+
 - `/api/chat` - Main AI chat with tool calling
 - `/api/transcribe` - Voice transcription via Whisper
 
