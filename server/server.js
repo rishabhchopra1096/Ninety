@@ -332,13 +332,20 @@ function isPendingActionValid(pendingAction) {
   }
 
   // Check required fields
-  if (!pendingAction.type || !pendingAction.mealId || !pendingAction.updateRequest) {
+  if (
+    !pendingAction.type ||
+    !pendingAction.mealId ||
+    !pendingAction.updateRequest
+  ) {
     console.log("⚠️ Pending action missing required fields");
     return false;
   }
 
   // Check expiry (5 minute timeout)
-  if (pendingAction.expiresAt && Date.now() > pendingAction.expiresAt) {
+  if (
+    pendingAction.expiresAt &&
+    Date.now() > pendingAction.expiresAt
+  ) {
     console.log("⏰ Pending action expired");
     return false;
   }
@@ -954,7 +961,9 @@ const tools = {
       timestamp: z
         .string()
         .optional()
-        .describe("ISO timestamp of when meal was eaten (use new Date().toISOString())"),
+        .describe(
+          "ISO timestamp of when meal was eaten (use new Date().toISOString())"
+        ),
 
       // Optional notes (e.g., "eaten at restaurant", "homemade")
       notes: z
@@ -1013,7 +1022,9 @@ const tools = {
         // Convert ISO string to Firestore Timestamp with fallback to current time
         const dateObj = timestamp ? new Date(timestamp) : new Date();
         if (isNaN(dateObj.getTime())) {
-          console.warn(`⚠️ Invalid timestamp "${timestamp}", using current time`);
+          console.warn(
+            `⚠️ Invalid timestamp "${timestamp}", using current time`
+          );
           dateObj = new Date();
         }
 
@@ -1745,7 +1756,8 @@ app.post("/api/chat", async (req, res) => {
     // userId: The user's Firebase Auth UID
     // recentMealsContext: Optional array of recent meals sent by the app
     // pendingAction: Optional action from previous turn (meal update waiting for confirmation)
-    let { messages, userId, recentMealsContext, pendingAction } = req.body;
+    let { messages, userId, recentMealsContext, pendingAction } =
+      req.body;
 
     // Log what we received
     console.log(
@@ -1786,11 +1798,18 @@ app.post("/api/chat", async (req, res) => {
       console.log("🔄 Pending action detected:", pendingAction.type);
 
       // Get the user's latest message
-      const latestMessage = messages[messages.length - 1]?.content?.toLowerCase() || "";
+      const latestMessage =
+        messages[messages.length - 1]?.content?.toLowerCase() || "";
 
       // Check if user is CONFIRMING the pending action
-      if (latestMessage.match(/^(yes|yeah|yep|yup|sure|ok|okay|correct|exactly|right|affirmative)/i)) {
-        console.log("✅ User confirmed pending action - executing directly");
+      if (
+        latestMessage.match(
+          /^(yes|yeah|yep|yup|sure|ok|okay|correct|exactly|right|affirmative)/i
+        )
+      ) {
+        console.log(
+          "✅ User confirmed pending action - executing directly"
+        );
 
         // Execute the pending action based on type
         if (pendingAction.type === "updateMeal") {
@@ -1798,19 +1817,32 @@ app.post("/api/chat", async (req, res) => {
             // Call analyzeAndUpdateMeal directly with the stored mealId
             global.currentUserId = userId; // Set user context for the tool
 
-            const updateResult = await tools.analyzeAndUpdateMeal.execute({
-              mealId: pendingAction.mealId,
-              updateRequest: pendingAction.updateRequest
-            }, {});
+            const updateResult =
+              await tools.analyzeAndUpdateMeal.execute(
+                {
+                  mealId: pendingAction.mealId,
+                  updateRequest: pendingAction.updateRequest,
+                },
+                {}
+              );
 
             // Return the result immediately - no AI analysis needed!
             return res.json({
-              message: updateResult.changesSummary || "✅ Your meal has been updated!",
+              message:
+                updateResult.changesSummary ||
+                "✅ Your meal has been updated!",
               pendingAction: null, // Clear the pending action
-              usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
+              usage: {
+                promptTokens: 0,
+                completionTokens: 0,
+                totalTokens: 0,
+              },
             });
           } catch (error) {
-            console.error("❌ Error executing pending action:", error);
+            console.error(
+              "❌ Error executing pending action:",
+              error
+            );
             // Fall through to normal AI flow if execution fails
             pendingAction = null;
           }
@@ -1818,7 +1850,11 @@ app.post("/api/chat", async (req, res) => {
       }
 
       // Check if user is REJECTING the pending action
-      if (latestMessage.match(/^(no|nope|nah|cancel|wrong|not|negative|incorrect)/i)) {
+      if (
+        latestMessage.match(
+          /^(no|nope|nah|cancel|wrong|not|negative|incorrect)/i
+        )
+      ) {
         console.log("❌ User rejected pending action - clearing it");
         pendingAction = null; // Clear it but continue to normal AI flow
         // Don't return early - let AI handle the rejection naturally
@@ -2053,7 +2089,7 @@ app.post("/api/chat", async (req, res) => {
           (tr) => tr.toolName === "logMeal"
         );
         if (logResult?.result?.success === false) {
-          message = `❌ Failed to log meal: ${logResult.result.message}`;
+          message = `❌Failed to log meal: ${logResult.result.message}`;
         } else {
           message = "✅ Your meal has been logged!";
         }
@@ -2065,7 +2101,7 @@ app.post("/api/chat", async (req, res) => {
           (tr) => tr.toolName === "analyzeAndUpdateMeal"
         );
         if (updateResult?.result?.success === false) {
-          message = `❌ Failed to update meal: ${updateResult.result.message}`;
+          message = `❌Failed to update meal: ${updateResult.result.message}`;
         } else {
           // Include the AI-generated changesSummary if available
           const summary = updateResult?.result?.changesSummary;
@@ -2152,14 +2188,16 @@ app.post("/api/chat", async (req, res) => {
               mealType: identification.mealType,
               updateRequest: userIntent, // "I also had coca-cola"
               confidence: identification.confidence,
-              expiresAt: Date.now() + 300000 // 5 minute expiry
+              expiresAt: Date.now() + 300000, // 5 minute expiry
             };
 
             console.log(
               `✅ Meal identified: ${identification.mealId} (${identification.confidence} confidence)`
             );
             console.log(`📝 Reasoning: ${identification.reasoning}`);
-            console.log(`🔄 Created pendingAction (expires in 5 min)`);
+            console.log(
+              `🔄 Created pendingAction (expires in 5 min)`
+            );
           } else {
             // Identification failed - ask for clarification
             console.log(
@@ -2235,7 +2273,9 @@ app.post("/api/chat", async (req, res) => {
       // Pending action for next turn (if meal identified but not yet confirmed)
       // Frontend will store this and send it back when user responds
       // Returns null if: no action pending, action expired, or action was executed/rejected
-      pendingAction: isPendingActionValid(pendingAction) ? pendingAction : null,
+      pendingAction: isPendingActionValid(pendingAction)
+        ? pendingAction
+        : null,
     });
   } catch (error) {
     // If anything goes wrong during the entire process
