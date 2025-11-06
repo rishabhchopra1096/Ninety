@@ -177,9 +177,15 @@ const openaiClient = new OpenAI({
  *
  * ================================================================================
  */
-async function identifyMealFromContext(meals, conversationHistory, userIntent) {
+async function identifyMealFromContext(
+  meals,
+  conversationHistory,
+  userIntent
+) {
   console.log("🔍 Starting meal identification analysis...");
-  console.log(`📊 Analyzing ${meals.length} meals against user intent: "${userIntent}"`);
+  console.log(
+    `📊 Analyzing ${meals.length} meals against user intent: "${userIntent}"`
+  );
 
   // If no meals found, return null
   if (!meals || meals.length === 0) {
@@ -191,49 +197,60 @@ async function identifyMealFromContext(meals, conversationHistory, userIntent) {
   if (meals.length === 1) {
     console.log("✅ Only one meal found - high confidence match");
     const meal = meals[0];
-    const foodNames = meal.foods.map(f => f.name).join(", ");
-    const timeStr = new Date(meal.timestamp).toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit"
-    });
+    const foodNames = meal.foods.map((f) => f.name).join(", ");
+    const timeStr = new Date(meal.timestamp).toLocaleTimeString(
+      "en-US",
+      {
+        hour: "numeric",
+        minute: "2-digit",
+      }
+    );
 
     return {
       mealId: meal.id,
       mealType: meal.mealType,
       confidence: "high",
       reasoning: "Only one recent meal found",
-      suggestedResponse: `I found your ${meal.mealType} from ${timeStr} with ${foodNames} (${meal.totalCalories} cal, ${meal.totalProtein}g protein, ${meal.totalCarbs}g carbs, ${meal.totalFats}g fat). What changes would you like me to make?`
+      suggestedResponse: `I found your ${meal.mealType} from ${timeStr} with ${foodNames} (${meal.totalCalories} cal, ${meal.totalProtein}g protein, ${meal.totalCarbs}g carbs, ${meal.totalFats}g fat). What changes would you like me to make?`,
     };
   }
 
   // Multiple meals - need AI to analyze context
-  console.log("🤖 Multiple meals found - using AI to identify which one");
+  console.log(
+    "🤖 Multiple meals found - using AI to identify which one"
+  );
 
   // Build the analysis prompt
   const analysisPrompt = `You are a meal identification assistant. Your job is to identify which specific meal the user is referring to based on conversation context.
 
 CONVERSATION HISTORY:
-${conversationHistory.map(msg => `${msg.role}: ${msg.content}`).join("\n")}
+${conversationHistory
+  .map((msg) => `${msg.role}: ${msg.content}`)
+  .join("\n")}
 
 USER'S CURRENT REQUEST:
 "${userIntent}"
 
 AVAILABLE MEALS (most recent first):
-${meals.map((meal, idx) => {
-  const foodNames = meal.foods.map(f => f.name).join(", ");
-  const timeStr = new Date(meal.timestamp).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit"
-  });
-  return `${idx + 1}. [ID: ${meal.id}]
+${meals
+  .map((meal, idx) => {
+    const foodNames = meal.foods.map((f) => f.name).join(", ");
+    const timeStr = new Date(meal.timestamp).toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    return `${idx + 1}. [ID: ${meal.id}]
    - Type: ${meal.mealType}
    - Time: ${timeStr}
    - Foods: ${foodNames}
    - Calories: ${meal.totalCalories}
-   - Macros: ${meal.totalProtein}g protein, ${meal.totalCarbs}g carbs, ${meal.totalFats}g fat`;
-}).join("\n\n")}
+   - Macros: ${meal.totalProtein}g protein, ${
+      meal.totalCarbs
+    }g carbs, ${meal.totalFats}g fat`;
+  })
+  .join("\n\n")}
 
 TASK:
 Analyze the conversation and identify which meal the user is referring to. Consider:
@@ -908,10 +925,12 @@ const tools = {
 
       // Check if Firestore is available - fail loudly if not
       if (!db) {
-        console.error("❌ CRITICAL: Firestore not initialized - cannot log meal");
+        console.error(
+          "❌ CRITICAL: Firestore not initialized - cannot log meal"
+        );
         return {
           success: false,
-          message: "Database unavailable. Please try again later."
+          message: "Database unavailable. Please try again later.",
         };
       }
 
@@ -1057,10 +1076,12 @@ const tools = {
 
       // Check if Firestore is available - fail loudly if not
       if (!db) {
-        console.error("❌ CRITICAL: Firestore not initialized - cannot find meals");
+        console.error(
+          "❌ CRITICAL: Firestore not initialized - cannot find meals"
+        );
         return {
           meals: [],
-          error: "Database unavailable. Please try again later."
+          error: "Database unavailable. Please try again later.",
         };
       }
 
@@ -1363,7 +1384,9 @@ Return ONLY a valid JSON object with this structure:
 
           // Remove markdown code blocks if present
           if (jsonText.startsWith("```json")) {
-            jsonText = jsonText.replace(/```json\n?/g, "").replace(/```\n?/g, "");
+            jsonText = jsonText
+              .replace(/```json\n?/g, "")
+              .replace(/```\n?/g, "");
           } else if (jsonText.startsWith("```")) {
             jsonText = jsonText.replace(/```\n?/g, "");
           }
@@ -1376,7 +1399,10 @@ Return ONLY a valid JSON object with this structure:
             changesSummary: newMeal.changesSummary,
           });
         } catch (parseError) {
-          console.error("❌ Failed to parse AI response as JSON:", parseError);
+          console.error(
+            "❌ Failed to parse AI response as JSON:",
+            parseError
+          );
           console.error("Raw response was:", analysisResult.text);
           return {
             success: false,
@@ -1490,13 +1516,15 @@ Return ONLY a valid JSON object with this structure:
 
       // Check if Firestore is available - fail loudly if not
       if (!db) {
-        console.error("❌ CRITICAL: Firestore not initialized - cannot get daily summary");
+        console.error(
+          "❌ CRITICAL: Firestore not initialized - cannot get daily summary"
+        );
         return {
           totalCalories: 0,
           calorieTarget: 2400,
           progress: 0,
           mealsCount: 0,
-          error: "Database unavailable. Please try again later."
+          error: "Database unavailable. Please try again later.",
         };
       }
 
@@ -1922,7 +1950,9 @@ app.post("/api/chat", async (req, res) => {
         } else {
           // Include the AI-generated changesSummary if available
           const summary = updateResult?.result?.changesSummary;
-          message = summary ? `✅ ${summary}` : "✅ Your meal has been updated!";
+          message = summary
+            ? `✅ ${summary}`
+            : "✅ Your meal has been updated!";
         }
       } else if (
         toolCalls.some((tc) => tc.toolName === "findRecentMeals")
@@ -1944,13 +1974,19 @@ app.post("/api/chat", async (req, res) => {
           (tr) => tr.toolName === "findRecentMeals"
         );
 
+        console.log(`findResult: `, JSON.stringify(findResult));
         // Check if meals were found
         if (findResult?.result?.meals?.length > 0) {
-          console.log(`\n✅ findRecentMeals returned ${findResult.result.meals.length} meals`);
-          console.log("🔄 Starting second AI analysis to identify which meal...");
+          console.log(
+            `\n✅ findRecentMeals returned ${findResult.result.meals.length} meals`
+          );
+          console.log(
+            "🔄 Starting second AI analysis to identify which meal..."
+          );
 
           // Get the user's current message (what they just said)
-          const userIntent = messages[messages.length - 1]?.content || "";
+          const userIntent =
+            messages[messages.length - 1]?.content || "";
 
           // Call the helper to identify which meal
           const identification = await identifyMealFromContext(
@@ -1965,19 +2001,31 @@ app.post("/api/chat", async (req, res) => {
 
             // Store the identified meal ID in the conversation context for next turn
             // This way, when user says "yes", AI can use this ID
-            console.log(`✅ Meal identified: ${identification.mealId} (${identification.confidence} confidence)`);
+            console.log(
+              `✅ Meal identified: ${identification.mealId} (${identification.confidence} confidence)`
+            );
             console.log(`📝 Reasoning: ${identification.reasoning}`);
           } else {
             // Identification failed - ask for clarification
-            console.log("⚠️ Could not identify meal - asking user for clarification");
-            const mealsList = findResult.result.meals.map((meal, idx) => {
-              const foodNames = meal.foods.map(f => f.name).join(", ");
-              const timeStr = new Date(meal.timestamp).toLocaleTimeString("en-US", {
-                hour: "numeric",
-                minute: "2-digit"
-              });
-              return `${idx + 1}. ${meal.mealType} at ${timeStr}: ${foodNames}`;
-            }).join("\n");
+            console.log(
+              "⚠️ Could not identify meal - asking user for clarification"
+            );
+            const mealsList = findResult.result.meals
+              .map((meal, idx) => {
+                const foodNames = meal.foods
+                  .map((f) => f.name)
+                  .join(", ");
+                const timeStr = new Date(
+                  meal.timestamp
+                ).toLocaleTimeString("en-US", {
+                  hour: "numeric",
+                  minute: "2-digit",
+                });
+                return `${idx + 1}. ${
+                  meal.mealType
+                } at ${timeStr}: ${foodNames}`;
+              })
+              .join("\n");
 
             message = `I found ${findResult.result.meals.length} recent meals:\n\n${mealsList}\n\nWhich one would you like to update?`;
           }
