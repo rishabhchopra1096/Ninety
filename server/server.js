@@ -1976,14 +1976,31 @@ app.post("/api/chat", async (req, res) => {
         );
 
         console.log("=== FINDRESULT DEBUG ===");
+        console.log("findResult", JSON.stringify(findResult));
         console.log("findResult exists:", !!findResult);
         console.log("findResult.toolName:", findResult?.toolName);
-        console.log("findResult.result exists:", !!findResult?.result);
-        console.log("findResult.result type:", typeof findResult?.result);
-        console.log("findResult.result.meals exists:", !!findResult?.result?.meals);
-        console.log("findResult.result.meals is array:", Array.isArray(findResult?.result?.meals));
-        console.log("findResult.result.meals length:", findResult?.result?.meals?.length);
+        console.log(
+          "findResult.result exists:",
+          !!findResult?.result
+        );
+        console.log(
+          "findResult.result type:",
+          typeof findResult?.result
+        );
+        console.log(
+          "findResult.result.meals exists:",
+          !!findResult?.result?.meals
+        );
+        console.log(
+          "findResult.result.meals is array:",
+          Array.isArray(findResult?.result?.meals)
+        );
+        console.log(
+          "findResult.result.meals length:",
+          findResult?.result?.meals?.length
+        );
         console.log("=== END DEBUG ===");
+
         // Check if meals were found
         if (findResult?.result?.meals?.length > 0) {
           console.log(
