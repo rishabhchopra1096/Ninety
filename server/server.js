@@ -558,6 +558,7 @@ You are smart enough to understand intent naturally. Trust your language underst
    - Fiber (g) ← IMPORTANT: Track this!
 5. **Confirm before logging**: Show breakdown, ask "Should I log this as [meal]?"
 6. **Call logMeal tool** only after user confirms
+   - IMPORTANT: Always include timestamp parameter using: new Date().toISOString()
 
 ### MULTIPLE ITEMS:
 User: "I had eggs, toast, and coffee for breakfast"
@@ -674,6 +675,12 @@ Default: 2,400 calories/day (will be customized during onboarding)
 
 ### TOOLS AVAILABLE:
 - logMeal: Log a new meal (use after confirmation)
+  Example call:
+  logMeal({
+    mealType: "breakfast",
+    timestamp: new Date().toISOString(),
+    foods: [{ name: "scrambled eggs", quantity: "2 eggs", calories: 180, protein: 12, carbs: 1, fats: 14, fiber: 0 }]
+  })
 - findRecentMeals: Find meals for editing context
 - analyzeAndUpdateMeal: Update existing meal using AI (use after confirmation)
 - getDailySummary: Get today's calorie totals
@@ -946,7 +953,8 @@ const tools = {
       // When the meal was eaten (ISO 8601 format)
       timestamp: z
         .string()
-        .describe("ISO timestamp of when meal was eaten"),
+        .optional()
+        .describe("ISO timestamp of when meal was eaten (use new Date().toISOString())"),
 
       // Optional notes (e.g., "eaten at restaurant", "homemade")
       notes: z
@@ -1002,14 +1010,19 @@ const tools = {
          * This is what gets saved to Firestore.
          * Structure matches what the mobile app expects.
          */
+        // Convert ISO string to Firestore Timestamp with fallback to current time
+        const dateObj = timestamp ? new Date(timestamp) : new Date();
+        if (isNaN(dateObj.getTime())) {
+          console.warn(`⚠️ Invalid timestamp "${timestamp}", using current time`);
+          dateObj = new Date();
+        }
+
         const mealData = {
           // Meal type (breakfast/lunch/dinner/snack)
           mealType,
 
-          // Convert ISO string to Firestore Timestamp
-          timestamp: admin.firestore.Timestamp.fromDate(
-            new Date(timestamp)
-          ),
+          // Timestamp of when meal was eaten
+          timestamp: admin.firestore.Timestamp.fromDate(dateObj),
 
           // Array of individual food items with their macros
           foods,
