@@ -1980,31 +1980,31 @@ app.post("/api/chat", async (req, res) => {
         console.log("findResult exists:", !!findResult);
         console.log("findResult.toolName:", findResult?.toolName);
         console.log(
-          "findResult.result exists:",
-          !!findResult?.result
+          "findResult.output exists:",
+          !!findResult?.output
         );
         console.log(
-          "findResult.result type:",
-          typeof findResult?.result
+          "findResult.output type:",
+          typeof findResult?.output
         );
         console.log(
-          "findResult.result.meals exists:",
-          !!findResult?.result?.meals
+          "findResult.output.meals exists:",
+          !!findResult?.output?.meals
         );
         console.log(
-          "findResult.result.meals is array:",
-          Array.isArray(findResult?.result?.meals)
+          "findResult.output.meals is array:",
+          Array.isArray(findResult?.output?.meals)
         );
         console.log(
-          "findResult.result.meals length:",
-          findResult?.result?.meals?.length
+          "findResult.output.meals length:",
+          findResult?.output?.meals?.length
         );
         console.log("=== END DEBUG ===");
 
         // Check if meals were found
-        if (findResult?.result?.meals?.length > 0) {
+        if (findResult?.output?.meals?.length > 0) {
           console.log(
-            `\n✅ findRecentMeals returned ${findResult.result.meals.length} meals`
+            `\n✅ findRecentMeals returned ${findResult.output.meals.length} meals`
           );
           console.log(
             "🔄 Starting second AI analysis to identify which meal..."
@@ -2016,7 +2016,7 @@ app.post("/api/chat", async (req, res) => {
 
           // Call the helper to identify which meal
           const identification = await identifyMealFromContext(
-            findResult.result.meals,
+            findResult.output.meals,
             messages.slice(-5), // Last 5 messages for context
             userIntent
           );
@@ -2036,7 +2036,7 @@ app.post("/api/chat", async (req, res) => {
             console.log(
               "⚠️ Could not identify meal - asking user for clarification"
             );
-            const mealsList = findResult.result.meals
+            const mealsList = findResult.output.meals
               .map((meal, idx) => {
                 const foodNames = meal.foods
                   .map((f) => f.name)
@@ -2053,7 +2053,7 @@ app.post("/api/chat", async (req, res) => {
               })
               .join("\n");
 
-            message = `I found ${findResult.result.meals.length} recent meals:\n\n${mealsList}\n\nWhich one would you like to update?`;
+            message = `I found ${findResult.output.meals.length} recent meals:\n\n${mealsList}\n\nWhich one would you like to update?`;
           }
         } else {
           // No meals found
