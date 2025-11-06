@@ -124,6 +124,170 @@ const openaiClient = new OpenAI({
 
 /*
  * ================================================================================
+ * HELPER FUNCTION: identifyMealFromContext
+ * ================================================================================
+ *
+ * PURPOSE:
+ * After findRecentMeals returns meals, we need a SECOND AI analysis to identify
+ * which specific meal the user is referring to based on conversation context.
+ *
+ * WHY THIS IS NEEDED:
+ * The primary AI call with tool execution generates EMPTY TEXT after calling
+ * findRecentMeals. This is a workflow design issue - we're asking one AI call
+ * to do too much:
+ * 1. Call findRecentMeals
+ * 2. Analyze which meal user means
+ * 3. Generate response describing the meal
+ * 4. Ask for confirmation
+ *
+ * This helper splits that into TWO separate AI calls:
+ * - First call: findRecentMeals (tool calling)
+ * - Second call: identifyMealFromContext (analysis only, no tools)
+ *
+ * PARAMETERS:
+ * - meals: Array of meals from findRecentMeals
+ * - conversationHistory: Recent messages for context
+ * - userIntent: The user's latest message that triggered the update
+ *
+ * RETURNS:
+ * {
+ *   mealId: string,           // The Firestore document ID
+ *   mealType: string,         // breakfast/lunch/dinner/snack
+ *   confidence: string,       // high/medium/low
+ *   reasoning: string,        // Why AI chose this meal
+ *   suggestedResponse: string // Response to send to user
+ * }
+ *
+ * EXAMPLE:
+ * User: "Actually that was lunch not breakfast"
+ * conversationHistory: [
+ *   {role: "user", content: "I had 2 sunny side eggs"},
+ *   {role: "assistant", content: "Logged breakfast..."},
+ *   {role: "user", content: "Actually that was lunch not breakfast"}
+ * ]
+ * meals: [{id: "abc123", mealType: "breakfast", foods: [{name: "Sunny Side Eggs", ...}], ...}]
+ *
+ * Returns: {
+ *   mealId: "abc123",
+ *   mealType: "breakfast",
+ *   confidence: "high",
+ *   reasoning: "User logged eggs breakfast 2 minutes ago, now saying 'that was lunch'",
+ *   suggestedResponse: "I found your breakfast from 9:00 AM with 2 sunny side eggs..."
+ * }
+ *
+ * ================================================================================
+ */
+async function identifyMealFromContext(meals, conversationHistory, userIntent) {
+  console.log("🔍 Starting meal identification analysis...");
+  console.log(`📊 Analyzing ${meals.length} meals against user intent: "${userIntent}"`);
+
+  // If no meals found, return null
+  if (!meals || meals.length === 0) {
+    console.log("⚠️ No meals to analyze");
+    return null;
+  }
+
+  // If only one meal, high confidence it's that one
+  if (meals.length === 1) {
+    console.log("✅ Only one meal found - high confidence match");
+    const meal = meals[0];
+    const foodNames = meal.foods.map(f => f.name).join(", ");
+    const timeStr = new Date(meal.timestamp).toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit"
+    });
+
+    return {
+      mealId: meal.id,
+      mealType: meal.mealType,
+      confidence: "high",
+      reasoning: "Only one recent meal found",
+      suggestedResponse: `I found your ${meal.mealType} from ${timeStr} with ${foodNames} (${meal.totalCalories} cal, ${meal.totalProtein}g protein, ${meal.totalCarbs}g carbs, ${meal.totalFats}g fat). What changes would you like me to make?`
+    };
+  }
+
+  // Multiple meals - need AI to analyze context
+  console.log("🤖 Multiple meals found - using AI to identify which one");
+
+  // Build the analysis prompt
+  const analysisPrompt = `You are a meal identification assistant. Your job is to identify which specific meal the user is referring to based on conversation context.
+
+CONVERSATION HISTORY:
+${conversationHistory.map(msg => `${msg.role}: ${msg.content}`).join("\n")}
+
+USER'S CURRENT REQUEST:
+"${userIntent}"
+
+AVAILABLE MEALS (most recent first):
+${meals.map((meal, idx) => {
+  const foodNames = meal.foods.map(f => f.name).join(", ");
+  const timeStr = new Date(meal.timestamp).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  });
+  return `${idx + 1}. [ID: ${meal.id}]
+   - Type: ${meal.mealType}
+   - Time: ${timeStr}
+   - Foods: ${foodNames}
+   - Calories: ${meal.totalCalories}
+   - Macros: ${meal.totalProtein}g protein, ${meal.totalCarbs}g carbs, ${meal.totalFats}g fat`;
+}).join("\n\n")}
+
+TASK:
+Analyze the conversation and identify which meal the user is referring to. Consider:
+1. Temporal context ("that", "my breakfast", "what I just logged")
+2. Food mentions in conversation
+3. Meal type mentions
+4. Recency (users usually refer to most recent meal when saying "that")
+
+Respond with a JSON object (wrapped in \`\`\`json code fence) containing:
+{
+  "mealId": "<the Firestore document ID>",
+  "mealType": "<breakfast/lunch/dinner/snack>",
+  "confidence": "<high/medium/low>",
+  "reasoning": "<1-2 sentences explaining why you chose this meal>",
+  "suggestedResponse": "<What to say to user - describe the meal and ask what changes they want>"
+}
+
+IMPORTANT:
+- Use ONLY the meal IDs provided above (like "abc123", not placeholders)
+- If confidence is low, suggestedResponse should ask for clarification
+- Include full meal details in suggestedResponse (time, foods, macros)`;
+
+  try {
+    // Make the AI call
+    const result = await generateText({
+      model: anthropic("claude-sonnet-4-5"),
+      messages: [{ role: "user", content: analysisPrompt }],
+      temperature: 0.2, // Low temperature for more consistent analysis
+    });
+
+    console.log("✅ AI meal identification complete");
+
+    // Extract JSON from response
+    const jsonMatch = result.text.match(/```json\n([\s\S]*?)\n```/);
+    if (!jsonMatch) {
+      console.error("❌ No JSON found in AI response");
+      console.log("📊 AI response:", result.text);
+      return null;
+    }
+
+    const identification = JSON.parse(jsonMatch[1]);
+    console.log("📊 Identified meal:", identification.mealId);
+    console.log("📊 Confidence:", identification.confidence);
+    console.log("📊 Reasoning:", identification.reasoning);
+
+    return identification;
+  } catch (error) {
+    console.error("❌ Error in meal identification:", error);
+    return null;
+  }
+}
+
+/*
+ * ================================================================================
  * FILE UPLOAD CONFIGURATION (MULTER)
  * ================================================================================
  *
@@ -350,36 +514,30 @@ User: "I had eggs, toast, and coffee for breakfast"
 
 **Detection**: User says "actually...", "wait...", "I only had...", "that was wrong", or corrects meal type
 
-**REQUIRED WORKFLOW (FOLLOW THESE STEPS IN ORDER):**
+**✅ NEW TWO-STEP WORKFLOW (AUTOMATED):**
 
-**Step 1 - FIND THE MEAL (⚠️ NEVER SKIP THIS STEP):**
-- **IMMEDIATELY call findRecentMeals tool**: \`findRecentMeals({ limit: 10 })\`
-- This returns the last 10 meals - **all of them**, not filtered
-- ⚠️ **You CANNOT call analyzeAndUpdateMeal without calling findRecentMeals first**
-- YOU must analyze the returned meals and identify which one the user is referring to
-- Use conversation context: meal type, food names, timing, and previous messages
-- If only one meal exists, that's obviously the one to update
-- If multiple exist, use context clues (e.g., "breakfast" mentioned = find breakfast meal)
+**What happens when user wants to edit:**
 
-**CRITICAL: After calling findRecentMeals, you MUST:**
-1. Describe what meals you found (meal type, time, foods, calories)
-2. Identify which specific meal the user is referring to
-3. Explain what change you'll make (with full updated macros)
-4. Ask for explicit confirmation: "Should I make this change?"
-5. ⚠️ **STOP HERE - DO NOT call analyzeAndUpdateMeal yet**
+1. **You call findRecentMeals** - This fetches recent meals from database
+2. **System automatically analyzes** - A second AI call identifies which meal (happens automatically)
+3. **You receive response** - System tells you which meal was identified with full details
+4. **You confirm with user** - Ask if they want to make the change
+5. **User confirms** - They say "yes" or similar
+6. **You call analyzeAndUpdateMeal** - Update happens with natural language
 
-**Only proceed to Step 4 (analyzeAndUpdateMeal) after the user confirms in their next message.**
+**IMPORTANT: The workflow is now SIMPLER for you:**
+- You DON'T need to manually analyze which meal - the system does it automatically
+- After calling findRecentMeals, you'll get a clear description of the identified meal
+- Just present that to the user and ask for confirmation
+- Then call analyzeAndUpdateMeal with the meal ID
 
-**EXAMPLE RESPONSE after finding meals:**
-"I found your breakfast from 9:00 AM with 2 sunny side eggs (180 cal). I'll change this to be logged as lunch instead. Should I make this update?"
+**Step 1 - FIND THE MEAL:**
+- **Call findRecentMeals tool**: \`findRecentMeals({ limit: 10 })\`
+- This returns the last 10 meals
+- ⚠️ The system will AUTOMATICALLY identify which meal the user means
+- You'll receive a response describing the identified meal
 
-**Step 2 - IDENTIFY THE MEAL:**
-From findRecentMeals results, identify which meal they're referring to:
-- Match by meal type, time, and food names
-- If only one meal found → that's the one
-- If multiple found → ask which one (see below)
-
-**Step 3 - CONFIRM THE CHANGE:**
+**Step 2 - CONFIRM THE CHANGE:**
 **ALWAYS confirm before updating** and show FULL macros (calories, protein, carbs, fats, fiber):
 
 **Calculation Rules:**
@@ -393,32 +551,18 @@ From findRecentMeals results, identify which meal they're referring to:
 • To: 1 egg (90 cal | 6g P, 0.5g C, 7g F, 0g Fb)
 Your daily total will change from 795 → 705 calories. Should I make this change?"
 
-**Step 4 - UPDATE (AI-DRIVEN):**
-Extract the meal ID from findRecentMeals results and pass it to analyzeAndUpdateMeal WITH the user's natural language update request.
+**Step 3 - UPDATE (AI-DRIVEN):**
+After user confirms, call analyzeAndUpdateMeal WITH the natural language update request.
 
-⚠️ **NEW AI-DRIVEN APPROACH:**
+⚠️ **AI-DRIVEN APPROACH:**
 The analyzeAndUpdateMeal tool accepts natural language! You don't need to structure the update manually.
 Just pass the user's intent in plain English and AI will handle the rest.
 
 EXAMPLE:
-If findRecentMeals returned: \`{ meals: [{ id: "meal_1730823456789_4aBcXyZ", mealType: "breakfast", foods: [...] }] }\`
-Then call: \`analyzeAndUpdateMeal({ mealId: "meal_1730823456789_4aBcXyZ", updateRequest: "change to lunch" })\`
+User confirms → Call: \`analyzeAndUpdateMeal({ mealId: "<meal_id_from_identification>", updateRequest: "change to lunch" })\`
 
-CRITICAL: Use the EXACT \`id\` value from the meal object returned by findRecentMeals.
-DO NOT use placeholder IDs like "xyz789", "abc123", "12345", or "mealId_placeholder".
-ONLY use real IDs from findRecentMeals results in the current conversation.
-
-**If findRecentMeals returns NO results:**
-"I don't see any [breakfast/lunch/dinner] logged recently. Would you like me to log this as a new [meal type] entry instead?"
-
-**If findRecentMeals returns MULTIPLE matches:**
-"I see you logged [food] multiple times today:
-1. Lunch (1:00 PM) - 5oz chicken (450 cal)
-2. Dinner (7:00 PM) - 4oz chicken (360 cal)
-Which one are you correcting?"
-
-**If no match found**:
-"Hmm, I don't see pasta in your recent meals. When did you have it?"
+CRITICAL: The meal ID will be provided to you by the system after findRecentMeals completes.
+DO NOT make up placeholder IDs - use the exact ID provided in the response.
 
 ### CONCRETE WORKFLOW EXAMPLES (AI-DRIVEN UPDATES):
 
@@ -474,13 +618,15 @@ Default: 2,400 calories/day (will be customized during onboarding)
 - analyzeAndUpdateMeal: Update existing meal using AI (use after confirmation)
 - getDailySummary: Get today's calorie totals
 
-### IMPORTANT: ALWAYS RESPOND AFTER CALLING TOOLS
+### IMPORTANT: SYSTEM HANDLES findRecentMeals ANALYSIS
 
-After using ANY tool, you MUST generate a natural language response explaining what you did or found.
+✅ **UPDATED BEHAVIOR:**
+When you call findRecentMeals, the system automatically performs a second AI analysis to identify which meal the user is referring to. You will receive a complete response that describes the meal. Simply present that response to the user and ask for confirmation.
+
+After using tools:
 - After logMeal: Confirm what was logged with calorie breakdown
 - After analyzeAndUpdateMeal: Confirm what was updated and show new values
-- After findRecentMeals: Describe what you found and proceed with the edit
-- NEVER call a tool and stay silent - always follow up with text
+- After findRecentMeals: System provides meal description automatically - present it to user
 
 Trust your intelligence to detect intent naturally. Don't overthink - you're smart enough to understand when someone ate vs. will eat.`;
 
@@ -1782,51 +1928,64 @@ app.post("/api/chat", async (req, res) => {
         toolCalls.some((tc) => tc.toolName === "findRecentMeals")
       ) {
         /*
-         * ⚠️ THIS IS THE PROBLEMATIC SECTION ⚠️
+         * ✅ PHASE 5 FIX: Second AI Analysis Step
          *
-         * AI called findRecentMeals but didn't generate text describing what it found.
-         * We try to create a fallback message, but this is where the bug manifests.
+         * AI called findRecentMeals but didn't generate text. This is expected!
+         * Tool calling and analysis need to be SEPARATE steps.
          *
-         * THE ISSUE:
-         * From logs, we see:
-         *   ✅ Found 2 recent meals from Firestore
-         * But the fallback says:
-         *   I couldn't find any recent meals...
-         *
-         * This means `findResult?.result?.meals` is not finding the meals even
-         * though they exist in toolResults.
-         *
-         * TODO: Add debug logging to see actual structure of findResult
+         * NEW WORKFLOW:
+         * 1. findRecentMeals returns meals (already happened) ✅
+         * 2. Call identifyMealFromContext() to analyze which meal ✅ NEW
+         * 3. Generate response describing the meal ✅ NEW
+         * 4. User confirms
+         * 5. AI calls analyzeAndUpdateMeal (happens in next turn)
          */
         const findResult = toolResults.find(
           (tr) => tr.toolName === "findRecentMeals"
         );
 
-        // DEBUG: Log the actual structure we're checking
-        console.log("\n🔍 DEBUG: Fallback for findRecentMeals");
-        console.log("📊 findResult exists:", !!findResult);
-        console.log("📊 findResult structure:", JSON.stringify(findResult, null, 2).substring(0, 500));
-        console.log("📊 findResult.result exists:", !!findResult?.result);
-        console.log("📊 findResult.result.meals exists:", !!findResult?.result?.meals);
-        console.log("📊 findResult.result.meals.length:", findResult?.result?.meals?.length || 0);
-
         // Check if meals were found
         if (findResult?.result?.meals?.length > 0) {
-          // Meals found - describe the first one
-          const meal = findResult.result.meals[0];
-          const foodNames = meal.foods.map((f) => f.name).join(", ");
-          const timeStr = new Date(meal.timestamp).toLocaleTimeString(
-            "en-US",
-            {
-              hour: "numeric",
-              minute: "2-digit",
-            }
+          console.log(`\n✅ findRecentMeals returned ${findResult.result.meals.length} meals`);
+          console.log("🔄 Starting second AI analysis to identify which meal...");
+
+          // Get the user's current message (what they just said)
+          const userIntent = messages[messages.length - 1]?.content || "";
+
+          // Call the helper to identify which meal
+          const identification = await identifyMealFromContext(
+            findResult.result.meals,
+            messages.slice(-5), // Last 5 messages for context
+            userIntent
           );
-          message = `I found your ${meal.mealType} from ${timeStr} with ${foodNames} (${meal.totalCalories} cal). What changes would you like me to make?`;
+
+          if (identification) {
+            // Success! Use the AI-generated response
+            message = identification.suggestedResponse;
+
+            // Store the identified meal ID in the conversation context for next turn
+            // This way, when user says "yes", AI can use this ID
+            console.log(`✅ Meal identified: ${identification.mealId} (${identification.confidence} confidence)`);
+            console.log(`📝 Reasoning: ${identification.reasoning}`);
+          } else {
+            // Identification failed - ask for clarification
+            console.log("⚠️ Could not identify meal - asking user for clarification");
+            const mealsList = findResult.result.meals.map((meal, idx) => {
+              const foodNames = meal.foods.map(f => f.name).join(", ");
+              const timeStr = new Date(meal.timestamp).toLocaleTimeString("en-US", {
+                hour: "numeric",
+                minute: "2-digit"
+              });
+              return `${idx + 1}. ${meal.mealType} at ${timeStr}: ${foodNames}`;
+            }).join("\n");
+
+            message = `I found ${findResult.result.meals.length} recent meals:\n\n${mealsList}\n\nWhich one would you like to update?`;
+          }
         } else {
-          // No meals found (or structure mismatch)
+          // No meals found
+          console.log("⚠️ findRecentMeals returned no meals");
           message =
-            "I couldn't find any recent meals matching your request. Could you tell me more about when you ate or what foods you had?";
+            "I couldn't find any recent meals. Could you tell me more about when you ate or what foods you had?";
         }
       } else if (
         toolCalls.some((tc) => tc.toolName === "getDailySummary")
