@@ -305,6 +305,49 @@ IMPORTANT:
 
 /*
  * ================================================================================
+ * HELPER FUNCTION: isPendingActionValid
+ * ================================================================================
+ *
+ * PURPOSE:
+ * Validates that a pendingAction is still usable (not expired, has required fields).
+ *
+ * WHY THIS IS NEEDED:
+ * When a meal is identified in Turn 1, we create a pendingAction with the mealId.
+ * Before executing it in Turn 2, we need to verify:
+ * - It exists and has required fields (mealId, type, updateRequest)
+ * - It hasn't expired (5 minute timeout)
+ *
+ * PARAMETERS:
+ * - pendingAction: Object with { type, mealId, updateRequest, expiresAt }
+ *
+ * RETURNS:
+ * - true if valid and not expired
+ * - false otherwise
+ *
+ * ================================================================================
+ */
+function isPendingActionValid(pendingAction) {
+  if (!pendingAction) {
+    return false;
+  }
+
+  // Check required fields
+  if (!pendingAction.type || !pendingAction.mealId || !pendingAction.updateRequest) {
+    console.log("⚠️ Pending action missing required fields");
+    return false;
+  }
+
+  // Check expiry (5 minute timeout)
+  if (pendingAction.expiresAt && Date.now() > pendingAction.expiresAt) {
+    console.log("⏰ Pending action expired");
+    return false;
+  }
+
+  return true;
+}
+
+/*
+ * ================================================================================
  * FILE UPLOAD CONFIGURATION (MULTER)
  * ================================================================================
  *
@@ -1688,7 +1731,8 @@ app.post("/api/chat", async (req, res) => {
     // messages: Array of conversation history [{role: "user", content: "..."}, ...]
     // userId: The user's Firebase Auth UID
     // recentMealsContext: Optional array of recent meals sent by the app
-    const { messages, userId, recentMealsContext } = req.body;
+    // pendingAction: Optional action from previous turn (meal update waiting for confirmation)
+    let { messages, userId, recentMealsContext, pendingAction } = req.body;
 
     // Log what we received
     console.log(
@@ -1707,6 +1751,68 @@ app.post("/api/chat", async (req, res) => {
       return res
         .status(400)
         .json({ error: "Messages array is required" });
+    }
+
+    /*
+     * ============================================================================
+     * PENDING ACTION HANDLING
+     * ============================================================================
+     *
+     * If there's a pendingAction from a previous turn (e.g., meal identified
+     * but not yet confirmed), check if the user is confirming or rejecting it.
+     *
+     * WORKFLOW:
+     * Turn 1: User says "I also had coca-cola" → meal identified → pendingAction created
+     * Turn 2: User says "Yes" → Execute pendingAction directly (skip AI analysis)
+     *         User says "No" → Clear pendingAction, let AI handle naturally
+     *         User says something else → Keep pendingAction, let AI handle
+     *
+     * ============================================================================
+     */
+    if (pendingAction && isPendingActionValid(pendingAction)) {
+      console.log("🔄 Pending action detected:", pendingAction.type);
+
+      // Get the user's latest message
+      const latestMessage = messages[messages.length - 1]?.content?.toLowerCase() || "";
+
+      // Check if user is CONFIRMING the pending action
+      if (latestMessage.match(/^(yes|yeah|yep|yup|sure|ok|okay|correct|exactly|right|affirmative)/i)) {
+        console.log("✅ User confirmed pending action - executing directly");
+
+        // Execute the pending action based on type
+        if (pendingAction.type === "updateMeal") {
+          try {
+            // Call analyzeAndUpdateMeal directly with the stored mealId
+            global.currentUserId = userId; // Set user context for the tool
+
+            const updateResult = await tools.analyzeAndUpdateMeal.execute({
+              mealId: pendingAction.mealId,
+              updateRequest: pendingAction.updateRequest
+            }, {});
+
+            // Return the result immediately - no AI analysis needed!
+            return res.json({
+              message: updateResult.changesSummary || "✅ Your meal has been updated!",
+              pendingAction: null, // Clear the pending action
+              usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
+            });
+          } catch (error) {
+            console.error("❌ Error executing pending action:", error);
+            // Fall through to normal AI flow if execution fails
+            pendingAction = null;
+          }
+        }
+      }
+
+      // Check if user is REJECTING the pending action
+      if (latestMessage.match(/^(no|nope|nah|cancel|wrong|not|negative|incorrect)/i)) {
+        console.log("❌ User rejected pending action - clearing it");
+        pendingAction = null; // Clear it but continue to normal AI flow
+        // Don't return early - let AI handle the rejection naturally
+      }
+
+      // For any other message, keep pendingAction and continue to normal AI flow
+      // (it will be re-sent if still valid, or expire after 5 minutes)
     }
 
     /*
@@ -2025,12 +2131,22 @@ app.post("/api/chat", async (req, res) => {
             // Success! Use the AI-generated response
             message = identification.suggestedResponse;
 
-            // Store the identified meal ID in the conversation context for next turn
-            // This way, when user says "yes", AI can use this ID
+            // Create a pendingAction to store the mealId for the next turn
+            // When user confirms, we can execute the update without re-analysis
+            pendingAction = {
+              type: "updateMeal",
+              mealId: identification.mealId,
+              mealType: identification.mealType,
+              updateRequest: userIntent, // "I also had coca-cola"
+              confidence: identification.confidence,
+              expiresAt: Date.now() + 300000 // 5 minute expiry
+            };
+
             console.log(
               `✅ Meal identified: ${identification.mealId} (${identification.confidence} confidence)`
             );
             console.log(`📝 Reasoning: ${identification.reasoning}`);
+            console.log(`🔄 Created pendingAction (expires in 5 min)`);
           } else {
             // Identification failed - ask for clarification
             console.log(
@@ -2102,6 +2218,11 @@ app.post("/api/chat", async (req, res) => {
         result.steps
           ?.filter((step) => step.toolCalls)
           .flatMap((step) => step.toolCalls) || [],
+
+      // Pending action for next turn (if meal identified but not yet confirmed)
+      // Frontend will store this and send it back when user responds
+      // Returns null if: no action pending, action expired, or action was executed/rejected
+      pendingAction: isPendingActionValid(pendingAction) ? pendingAction : null,
     });
   } catch (error) {
     // If anything goes wrong during the entire process

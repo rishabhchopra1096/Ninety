@@ -26,6 +26,7 @@ export default function ChatScreen() {
   const [isTyping, setIsTyping] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [pendingAction, setPendingAction] = useState<any>(null); // Store pending meal updates
   const scrollViewRef = useRef<ScrollView>(null);
 
   // Voice recording state
@@ -154,6 +155,7 @@ export default function ChatScreen() {
           messages: apiMessages,
           userId: user?.uid || 'anonymous', // Send userId for function calling
           recentMealsContext: [], // Will be populated later when we fetch from Firestore
+          pendingAction: pendingAction, // Send pending action from previous turn
         }),
       });
 
@@ -166,7 +168,15 @@ export default function ChatScreen() {
 
       const data = await response.json();
       console.log('📥 Received response data:', data);
-      
+
+      // Store pending action for next turn
+      if (data.pendingAction) {
+        setPendingAction(data.pendingAction);
+        console.log('🔄 Stored pendingAction for next turn:', data.pendingAction.type);
+      } else {
+        setPendingAction(null);
+      }
+
       if (!data.message) {
         throw new Error('No message in response');
       }
@@ -210,7 +220,7 @@ export default function ChatScreen() {
     } finally {
       setIsTyping(false);
     }
-  }, [apiUrl, convertMessagesToAPIFormat, messages]);
+  }, [apiUrl, convertMessagesToAPIFormat, messages, pendingAction, user]);
 
   // Handle sending messages
   const handleSend = useCallback(async () => {
