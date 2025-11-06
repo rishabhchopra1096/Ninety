@@ -1639,71 +1639,15 @@ app.post("/api/chat", async (req, res) => {
 
     /*
      * ============================================================================
-     * DEBUG LOGGING - INVESTIGATE AI EMPTY TEXT BUG
+     * SIMPLE LOGGING FOR MONITORING
      * ============================================================================
      *
-     * Adding extensive logging to understand why AI generates empty text after
-     * calling findRecentMeals.
+     * Basic logging to monitor AI responses without crashing on undefined properties.
      *
      * ============================================================================
      */
-    console.log("\n🔍 DEBUG: Starting result analysis...");
-    console.log("📊 result.text:", result.text ? `"${result.text.substring(0, 100)}..."` : "EMPTY or null");
+    console.log("📊 result.text:", result.text ? "present" : "EMPTY");
     console.log("📊 result.steps count:", result.steps?.length || 0);
-
-    // Log each step in detail
-    if (result.steps && result.steps.length > 0) {
-      result.steps.forEach((step, index) => {
-        console.log(`\n  Step ${index + 1}:`);
-        console.log(`    - toolCalls: ${step.toolCalls?.length || 0} calls`);
-        if (step.toolCalls && step.toolCalls.length > 0) {
-          step.toolCalls.forEach((tc, tcIndex) => {
-            console.log(`      [${tcIndex}] Tool: ${tc.toolName}`);
-            console.log(`          Args: ${JSON.stringify(tc.args).substring(0, 100)}...`);
-          });
-        }
-
-        console.log(`    - toolResults: ${step.toolResults?.length || 0} results`);
-        if (step.toolResults && step.toolResults.length > 0) {
-          step.toolResults.forEach((tr, trIndex) => {
-            console.log(`      [${trIndex}] Tool: ${tr.toolName}`);
-            console.log(`          Result structure: ${JSON.stringify(tr.result).substring(0, 200)}...`);
-
-            // Special logging for findRecentMeals
-            if (tr.toolName === 'findRecentMeals' && tr.result?.meals) {
-              console.log(`          ✅ findRecentMeals returned ${tr.result.meals.length} meals`);
-              tr.result.meals.forEach((meal, mealIndex) => {
-                console.log(`            [${mealIndex}] ${meal.mealType} - ${meal.foods?.map(f => f.name).join(', ')}`);
-              });
-            }
-          });
-        }
-
-        console.log(`    - text: ${step.text ? `"${step.text.substring(0, 100)}..."` : "EMPTY or null"}`);
-      });
-    }
-
-    // Log response.messages structure
-    console.log("\n📊 result.response.messages count:", result.response?.messages?.length || 0);
-    if (result.response?.messages) {
-      result.response.messages.forEach((msg, index) => {
-        console.log(`  Message ${index + 1}:`);
-        console.log(`    - role: ${msg.role}`);
-        if (typeof msg.content === 'string') {
-          console.log(`    - content (string): "${msg.content.substring(0, 100)}..."`);
-        } else if (Array.isArray(msg.content)) {
-          console.log(`    - content (array): ${msg.content.length} parts`);
-          msg.content.forEach((part, partIndex) => {
-            console.log(`      [${partIndex}] type: ${part.type}`);
-            if (part.type === 'text' && part.text) {
-              console.log(`           text: "${part.text.substring(0, 100)}..."`);
-            }
-          });
-        }
-      });
-    }
-
-    console.log("\n🔍 DEBUG: Result analysis complete\n");
 
     /*
      * ============================================================================
