@@ -280,6 +280,42 @@ module.exports = (admin, db) =>
           // Add strength training specific fields
           activityData.exercises = exercisesWithPRs;
           activityData.totalVolume = totalVolume;
+
+          /*
+           * CALORIE ESTIMATION FOR STRENGTH TRAINING
+           *
+           * Strength training DOES burn calories! We estimate based on:
+           * - Duration (if provided) OR estimated from # of exercises
+           * - Moderate intensity: ~5 calories per minute
+           *
+           * Formula:
+           * - If duration provided: use it
+           * - Else estimate: ~10 minutes per exercise (reasonable average)
+           * - Calories = duration × 5 cal/min
+           */
+          let durationMinutes;
+          if (params.duration !== undefined) {
+            // User provided duration - use it
+            durationMinutes = params.duration;
+          } else {
+            // Estimate duration based on number of exercises
+            // Assumption: ~10 minutes per exercise (includes rest between sets)
+            durationMinutes = exercisesWithPRs.length * 10;
+          }
+
+          // Calculate calories: moderate intensity strength training = ~5 cal/min
+          const caloriesPerMinute = 5;
+          const estimatedCalories = Math.round(
+            durationMinutes * caloriesPerMinute
+          );
+
+          // Add duration and calories to activity data
+          activityData.duration = durationMinutes;
+          activityData.caloriesBurned = estimatedCalories;
+
+          console.log(
+            `   Estimated ${estimatedCalories} calories for ${durationMinutes} min strength session`
+          );
         }
 
         /*

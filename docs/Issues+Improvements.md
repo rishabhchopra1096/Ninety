@@ -1,6 +1,12 @@
-### Adding a meal is troublesome. It says it added it, but doesn't, and you need to keep confirming till it does. Adding the organge juice took 3 tries.
+### Improvement: After each activity/food log -- the current daily deficit or surplus should be estimated. It's important to do that to keep that on track. This is what I liked about claude.
 
-Issue 1: Adding items takes multiple tries
+### Improvement: Claude chat by default is very motivational and course correctional in nature. I like that. I need the claude chat to be itself.
+
+### Issue 0: Need to share the PRD of the app with health to figure out test cases.
+
+### Issue 1: Adding a meal is troublesome. It says it added it, but doesn't, and you need to keep confirming till it does. Adding the organge juice took 3 tries. This problem doesn't occur when we are changing the meal type. The meal type is almost always updated all at once. It also works to change the quantities to half or something like that. Just adding something isn't working properly. It states that, "Okay, I'll add it," or "Okay, processing this update immediately," or something along those lines. But it doesn't do it.
+
+Adding items takes multiple tries
 (orange juice saga)
 
 Root Cause: Hardcoded shortcut in

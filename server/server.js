@@ -746,6 +746,11 @@ const tools = {
 
   // ACTIVITY TOOLS - Extracted to tools/activity/
   logActivity: require("./tools/activity/logActivity")(admin, db),
+  findRecentActivities: require("./tools/activity/findRecentActivities")(
+    admin,
+    db
+  ),
+  updateActivity: require("./tools/activity/updateActivity")(admin, db),
 
   /*
    * ============================================================================

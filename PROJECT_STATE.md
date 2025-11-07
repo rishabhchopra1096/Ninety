@@ -2276,4 +2276,632 @@ We have:
 
 ---
 
+---
+
+## 🧪 Phase 8: Activity Logging Testing Results (November 7, 2025)
+
+### Status: TESTED - PARTIAL SUCCESS
+
+After implementing activity logging with flexible schema and profile-based calorie estimation, we conducted comprehensive end-to-end testing. Activity logging is functional for all activity types, but the same text generation issue from meal logging persists.
+
+---
+
+### ✅ What's Working
+
+**1. Profile Fetching & Injection** - WORKING PERFECTLY
+
+Evidence from logs:
+```
+📋 Fetching user profile for AI context...
+✅ User profile loaded: { hasWeight: true, hasAge: true, hasGender: true }
+📋 Adding user profile to AI context
+```
+
+- Successfully loads user weight (160 lbs), age, gender from Firestore
+- Injects profile data into AI system prompt
+- AI uses profile for personalized calculations
+
+**2. Profile-Based Calorie Estimation** - WORKING PERFECTLY
+
+Evidence from logs:
+```
+User: "I played basketball for an hour."
+AI: "Based on your weight (160 lbs), I estimate approximately **480 calories**"
+
+User: "I went for a three-mile run."
+AI: "Based on your weight (160 lbs), I estimate approximately **300 calories**"
+
+User: "I walked for 45 minutes."
+AI: "Based on your weight (160 lbs), I estimate approximately **110 calories**"
+```
+
+- AI references user's actual weight in every calorie estimate
+- Shows reasoning: "Based on your weight (160 lbs)..."
+- Different estimates for different intensities (basketball: 480 cal, running: 300 cal, walking: 110 cal)
+- Accurate calculations using user profile data
+
+**3. Activity Logging - All Types** - WORKING
+
+Evidence from logs:
+```
+🔧 Executing logActivity tool
+   Activity type: sport
+✅ Activity logged to Firestore: zJWYKl3s2KqPYRbMSJfI
+```
+
+All activity types successfully logged:
+
+- **Sport** (Basketball): 60 minutes, high intensity → 480 calories
+- **Strength Training** (Bench Press): 3 sets (10, 10, 8 reps) @ 30 kg each hand → 840 kg total volume
+- **Strength Training** (Bicep Curls): 3 sets × 8 reps @ 10 kg each hand → 240 kg total volume
+- **Cardio** (Running): 35 minutes, 3 miles, moderate intensity → 300 calories
+- **Cardio** (Walking): 45 minutes, ~2.25 miles estimated, low-moderate intensity → 110 calories
+
+**4. Conversational Activity Questions** - WORKING
+
+AI asks follow-up questions to get complete data:
+
+```
+User: "I went for a three-mile run."
+AI: "How long did your 3-mile run take? Was it around 20-30 minutes, or longer?"
+
+User: "I walked for 45 minutes."
+AI: "About how far did you walk? Was it around 2 miles, or a different distance?"
+
+User: "I played basketball for an hour."
+AI: "How intense was the game? Was it a casual pick-up game, or more competitive?"
+```
+
+- Asks duration, distance, intensity as needed
+- Adapts questions to activity type
+- Natural conversational flow
+
+**5. Initial Meal Logging** - WORKING
+
+Evidence from logs:
+```
+User: "I had two eggs for breakfast"
+AI: [estimates nutrition] → logs successfully
+
+User: "I had rajma chawal for dinner"
+AI: [asks quantities] → [estimates] → logs successfully
+```
+
+- Meal estimation working
+- Initial logging functional
+- Firestore saves correctly
+
+**6. Strength Training Details** - WORKING
+
+Evidence from logs:
+```
+User: "I did bench press, three sets at 30 kg each dumbbell"
+AI: "How many reps did you do in each set?"
+User: "First two were ten reps, last was about eight reps"
+AI: "Were you using 30 kg dumbbell in each hand (60 kg total) or 30 kg total?"
+User: "Thirty kg in each hand"
+AI: [logs correctly with total volume calculation]
+```
+
+- Clarifies sets, reps, weight
+- Asks about dumbbell configuration (each hand vs total)
+- Calculates total volume correctly (840 kg for bench press)
+
+---
+
+### ❌ What's Not Working
+
+**Issue 1: Empty AI Text After Tool Calls** - CRITICAL (SAME AS PHASE 2.5)
+
+Evidence from logs:
+```
+🔧 Executing logActivity tool
+   Activity type: sport
+✅ Activity logged to Firestore: zJWYKl3s2KqPYRbMSJfI
+✅ AI request successful
+📊 result.text: EMPTY
+📊 result.steps count: 1
+⚠️ AI called tools but generated no text. Providing fallback based on tool type.
+🤖 Generated response: ✅ Done!
+```
+
+**What's Happening:**
+1. User confirms activity logging
+2. AI successfully calls `logActivity` tool
+3. Activity saves to Firestore ✅
+4. AI generates **EMPTY TEXT** after tool execution ❌
+5. Fallback system provides generic "✅ Done!" message ❌
+
+**Expected vs Actual:**
+
+Expected:
+```
+AI: "✅ Logged! You played basketball for 60 minutes (480 calories burned). Great workout! 🏀"
+```
+
+Actual:
+```
+AI: "✅ Done!"
+```
+
+**Impact:**
+- Activities save correctly to database
+- But users get generic confirmation instead of contextual feedback
+- Breaks user experience (no celebration, no summary, no encouragement)
+- Same issue documented in Phase 2.5 for meal logging
+
+**Root Cause:**
+- Vercel AI SDK's `generateText()` returns empty `result.text` after tool execution
+- Happens with BOTH OpenAI GPT-4o-mini AND Claude Sonnet 4.5
+- This is a workflow design issue, not a model issue (researched in Phase 2.5)
+
+---
+
+**Issue 2: Meal Update Workflow** - NOT WORKING (KNOWN ISSUE FROM PHASE 2.5)
+
+Evidence from logs:
+```
+User: "Actually, that was lunch, not breakfast."
+AI: "I couldn't find any recent meals matching your request."
+
+User: "I'm talking about the two sunny side eggs."
+AI: "I couldn't find any recent meals matching your request."
+```
+
+**What's Happening:**
+- Meal was just logged successfully
+- User tries to update meal type (breakfast → lunch)
+- `findRecentMeals` should find the meal
+- But AI says "couldn't find any recent meals"
+
+**Root Cause:**
+- This is the known issue from Phase 2.5
+- Documented extensively in PROJECT_STATE.md lines 948-1100
+- Not related to activity logging implementation
+- Needs second AI analysis step (identifyMealFromContext)
+
+---
+
+### 📊 Testing Summary
+
+**Test Scenarios Executed:**
+
+1. ✅ Basketball (sport) - 60 min, high intensity
+2. ✅ Bench press (strength) - 3 sets with varying reps
+3. ✅ Bicep curls (strength) - 3 sets × 8 reps
+4. ✅ Running (cardio) - 3 miles, 30-40 min
+5. ✅ Walking (cardio) - 45 min, distance estimated
+6. ✅ Profile-based calorie calculations for all activities
+7. ❌ Meal type update (breakfast → lunch) - FAILED
+
+**Success Rate:**
+
+- **Activity Logging Core Functionality**: 100% ✅
+  - All activity types log successfully
+  - Profile-based calorie estimates working
+  - Firestore saves all data correctly
+
+- **AI Text Generation**: 0% ❌
+  - Empty text after all tool executions
+  - Fallback messages working but not ideal
+
+- **Meal Update Workflow**: 0% ❌
+  - Cannot find recently logged meals
+  - Known issue from Phase 2.5
+
+**Overall Assessment**: **PARTIAL SUCCESS**
+- Activity logging implementation is COMPLETE and FUNCTIONAL
+- All activities save correctly with accurate calorie estimates
+- Same text generation bug from meal logging still present
+- Meal updates still broken (unrelated to activity logging)
+
+---
+
+### 🎯 Key Implementation Details
+
+**Flexible Activity Schema:**
+
+Located in: `server/tools/activity/logActivity.js`
+
+```javascript
+inputSchema: z.object({
+  type: z.enum(["strength_training", "cardio", "sport", "class", "flexibility", "other"]),
+  name: z.string(),
+  duration: z.number().optional(),
+  exercises: z.array(...).optional(), // Strength training only
+  distance: z.number().optional(), // Cardio/walking
+  distanceUnit: z.enum(["miles", "km"]).optional(),
+  intensity: z.enum(["low", "moderate", "high"]).optional(),
+  caloriesBurned: z.number().optional(),
+  timestamp: z.string().optional(),
+  notes: z.string().optional(),
+})
+```
+
+**Why This Works:**
+- Single flexible schema supports ANY physical activity
+- AI populates relevant fields based on activity type
+- No rigid discriminated union needed
+- Examples:
+  - Basketball → type, name, duration, intensity, calories
+  - Bench Press → type, name, exercises array with sets/reps/weight
+  - Walking → type, name, duration, distance (flexible!)
+
+**Profile Injection:**
+
+Located in: `server/server.js` lines 1139-1177
+
+Adds user profile to system prompt with:
+- Weight, age, gender, height, activity level
+- Calorie estimation formulas
+- Explicit instructions to reference weight in responses
+
+---
+
+### 🚧 Issues NOT Related to Activity Logging
+
+**These issues existed before activity logging and are unrelated:**
+
+1. ❌ Meal update workflow (Phase 2.5 issue)
+2. ❌ Empty text after tool calls (Phase 2.5 issue)
+
+**Activity logging did NOT break anything:**
+- Meal logging still works for initial entries
+- Profile fetching still works
+- All existing functionality preserved
+
+---
+
+### 🔍 Next Steps
+
+**Priority 1: Fix Empty Text Issue (Affects Both Meal & Activity Logging)**
+
+Located in: `server/server.js` message extraction logic (lines 1644-1737)
+
+Current approach:
+```javascript
+// Extract from result.response.messages if result.text is empty
+// Then use fallback messages based on tool type
+```
+
+**Needed:** Investigate why AI generates empty text after tool calls with Claude Sonnet 4.5. Consider:
+- Force AI to generate text after tool execution
+- Add explicit instruction in system prompt
+- Or accept this as SDK behavior and improve fallback messages
+
+**Priority 2: Fix Meal Update Workflow (Phase 2.5 Issue)**
+
+Known issue from lines 948-1100. Needs:
+- Second AI analysis step (identifyMealFromContext)
+- Remove single-meal shortcut (lines 197-216 issue from Phase 7)
+
+---
+
+### 💡 Lessons Learned
+
+1. **Flexible Schemas Work Beautifully**: Single schema with optional fields beats rigid type unions
+2. **Profile Injection is Powerful**: AI uses weight naturally in every calorie estimate
+3. **Activity Logging Complexity Matches Meal Logging**: Same patterns, same issues
+4. **Empty Text Bug Persists Across Domains**: Not specific to meals OR activities - it's the SDK workflow
+5. **Don't Mix Unrelated Bugs**: Activity logging works; meal updates don't - but they're separate issues
+
+---
+
+### 📝 Files Modified for Activity Logging
+
+**New Files Created:**
+- `server/tools/activity/logActivity.js` - Activity logging tool with flexible schema
+- `server/prompts/system.js` - System prompt with activity logging instructions (lines 186-225)
+
+**Files Modified:**
+- `server/server.js` - Profile fetching (lines 1110-1129), profile injection (lines 1139-1177), tool registration
+- `PROJECT_STATE.md` - This documentation
+
+**Files NOT Modified:**
+- All meal logging tools (preserved, working)
+- All existing chat functionality (preserved, working)
+
+---
+
+### 🎉 What We Achieved
+
+Despite the empty text issue:
+
+1. ✅ **Complete activity logging system** supporting 6+ activity types
+2. ✅ **Profile-based calorie estimation** using real user weight
+3. ✅ **Flexible schema** that adapts to any physical activity
+4. ✅ **Conversational workflow** with smart follow-up questions
+5. ✅ **Preserved all existing functionality** (meal logging, voice, etc.)
+6. ✅ **Clean code organization** (tools extracted, system prompt modular)
+
+**The core implementation is SOLID.** The empty text issue is a separate AI SDK workflow problem affecting both meals and activities.
+
+---
+
+## 🔧 Phase 8.5: Session Grouping & Calorie Fix (November 7, 2025)
+
+### Status: IMPLEMENTED - READY FOR TESTING
+
+After analyzing user feedback and Firestore data, we identified critical issues with activity logging: exercises were being logged as separate sessions instead of being grouped together, and strength training wasn't tracking calories burned.
+
+---
+
+### 🚨 Issues Identified (From User Testing)
+
+**Issue 1: No Session Grouping** (CRITICAL)
+- User logs "bench press 3x8" → Creates session A (5:03 PM)
+- User logs "bicep curls 3x8" (1 minute later) → Creates session B (5:04 PM) ❌
+- **Expected:** Both exercises in ONE "Upper Body Workout" session ✅
+
+**Issue 2: Strength Training Has No Calories** (HIGH PRIORITY)
+- Basketball: 480 cal ✅ | Running: 300 cal ✅ | Walking: 110 cal ✅
+- Bench Press: NO calories ❌ | Bicep Curls: NO calories ❌
+- Strength training DOES burn calories (~5 cal/min for moderate intensity)
+
+**Issue 3: totalVolume Confusion** (EDUCATION NEEDED)
+- totalVolume = sets × reps × weight (summed across all exercises)
+- Standard powerlifting metric for tracking progressive overload
+- Not a bug, just needs UI explanation
+
+---
+
+### ✅ What We Implemented
+
+**1. Created `findRecentActivities.js` Tool**
+
+Located: `server/tools/activity/findRecentActivities.js`
+
+Purpose: Find recent workout sessions to enable session grouping
+
+```javascript
+// Query recent strength sessions
+findRecentActivities({
+  withinMinutes: 60,
+  type: "strength_training",
+  limit: 3
+})
+// Returns: [{ id: "zJWYKl3s2Kq...", name: "Chest Workout", exercises: [...] }]
+```
+
+Key features:
+- Time-based filtering (default: last 60 minutes)
+- Type filtering (strength_training, cardio, etc.)
+- Returns real Firestore document IDs needed for updates
+
+**2. Created `updateActivity.js` Tool**
+
+Located: `server/tools/activity/updateActivity.js`
+
+Purpose: Add exercises to existing workout sessions
+
+```javascript
+// Add bicep curls to existing chest workout
+updateActivity({
+  sessionId: "zJWYKl3s2Kq...", // From findRecentActivities
+  exercises: [{ name: "Bicep Curls", sets: 3, reps: 8, weight: 10, unit: "kg" }],
+  name: "Chest & Arms Workout" // Optional: update session name
+})
+```
+
+Key features:
+- Merges new exercises with existing exercises array
+- Recalculates totalVolume automatically
+- Re-checks for PRs on new exercises
+- Updates session timestamp to reflect latest exercise
+- Validates session IDs (rejects placeholders)
+
+**3. Updated System Prompt with Session Grouping Workflow**
+
+Located: `server/prompts/system.js` (lines 227-289)
+
+New workflow for strength exercises:
+```
+1. User logs strength exercise
+2. AI calls findRecentActivities({ withinMinutes: 60, type: "strength_training" })
+3. If recent session exists:
+   → AI asks: "Add this to your current [session name] workout?"
+   → User confirms → AI calls updateActivity with real session ID
+   → User declines → AI creates new session
+4. If no recent session:
+   → AI creates new session with logActivity
+```
+
+Added concrete examples:
+- Example A: First exercise creates new session
+- Example B: Second exercise adds to existing session
+- Example C: User wants separate session (e.g., legs after chest)
+
+**4. Added Automatic Calorie Estimation for Strength Training**
+
+Located: `server/tools/activity/logActivity.js` (lines 284-318)
+
+Formula:
+```javascript
+// If user provides duration: use it
+// Else estimate: 10 minutes per exercise
+durationMinutes = params.duration || (exercises.length * 10);
+
+// Moderate intensity: 5 calories per minute
+caloriesBurned = durationMinutes * 5;
+```
+
+Examples:
+- 1 exercise (bench press) → 10 min → ~50 calories
+- 2 exercises (bench + biceps) → 20 min → ~100 calories
+- 3 exercises → 30 min → ~150 calories
+
+**5. Registered New Tools in server.js**
+
+Located: `server/server.js` (lines 749-753)
+
+```javascript
+// ACTIVITY TOOLS - Extracted to tools/activity/
+logActivity: require("./tools/activity/logActivity")(admin, db),
+findRecentActivities: require("./tools/activity/findRecentActivities")(admin, db),
+updateActivity: require("./tools/activity/updateActivity")(admin, db),
+```
+
+---
+
+### 🎯 How Session Grouping Works (Example Flow)
+
+**Turn 1: User logs first exercise**
+```
+User: "I did bench press, 3 sets of 8 at 30 kg"
+AI: "Awesome! Bench Press 3x8 @ 30 kg. Should I log this?"
+User: "Yes"
+AI: *Calls logActivity({ type: "strength_training", name: "Chest Workout", exercises: [{ name: "Bench Press", sets: 3, reps: 8, weight: 30, unit: "kg" }] })*
+→ Creates new session with ID "zJWYKl3s2Kq..."
+→ Automatically adds: duration: 10 min, caloriesBurned: 50 cal
+AI: "✅ Logged! Chest Workout (10 min, ~50 calories burned). 💪"
+```
+
+**Turn 2: User logs second exercise (2 minutes later)**
+```
+User: "Now I did bicep curls, 3 sets of 8 at 10 kg"
+AI: *Calls findRecentActivities({ withinMinutes: 60, type: "strength_training" })*
+→ Finds "Chest Workout" from 2 minutes ago
+AI: "Would you like to add Bicep Curls to your current Chest Workout?"
+User: "Yes"
+AI: *Calls updateActivity({ sessionId: "zJWYKl3s2Kq...", exercises: [{ name: "Bicep Curls", sets: 3, reps: 8, weight: 10, unit: "kg" }], name: "Chest & Arms Workout" })*
+→ Adds bicep curls to exercises array
+→ Recalculates: duration: 20 min, caloriesBurned: 100 cal, totalVolume: updated
+AI: "✅ Added Bicep Curls to your workout! Chest & Arms Workout now has 2 exercises (20 min, ~100 calories). Total volume: 1,080 lbs. 💪"
+```
+
+**Result:** ONE session with 2 exercises instead of 2 separate sessions!
+
+---
+
+### 📊 Expected Improvements
+
+**Before:**
+```
+Firestore: activities/{userId}/sessions/
+  - abc123: { name: "Dumbbell Bench Press", exercises: [bench], duration: ?, calories: NONE }
+  - def456: { name: "Upper Body Workout", exercises: [biceps], duration: ?, calories: NONE }
+```
+
+**After:**
+```
+Firestore: activities/{userId}/sessions/
+  - abc123: {
+      name: "Chest & Arms Workout",
+      exercises: [bench, biceps],
+      duration: 20,
+      caloriesBurned: 100,
+      totalVolume: 1080
+    }
+```
+
+**User Benefits:**
+1. ✅ Workout sessions grouped naturally (chest + arms = one workout)
+2. ✅ Accurate calorie tracking for strength training
+3. ✅ Clear session names ("Chest & Arms Workout" vs generic "Upper Body Workout")
+4. ✅ Proper totalVolume calculation across all exercises
+5. ✅ Duration tracking (estimated or user-provided)
+
+---
+
+### 🧪 Testing Checklist
+
+**Test 1: Basic Session Grouping**
+- [ ] Log first exercise (e.g., bench press)
+- [ ] Log second exercise within 60 minutes (e.g., bicep curls)
+- [ ] AI should ask: "Add to current workout?"
+- [ ] Confirm → Both exercises in ONE session ✅
+- [ ] Check Firestore: Only 1 session document with 2 exercises
+
+**Test 2: Separate Sessions**
+- [ ] Log chest exercise (e.g., bench press)
+- [ ] Log leg exercise (e.g., squats) within 60 minutes
+- [ ] AI asks: "Add to current workout?"
+- [ ] Say "No, separate workout"
+- [ ] AI creates NEW session for legs ✅
+- [ ] Check Firestore: 2 separate sessions
+
+**Test 3: Session Expired**
+- [ ] Log first exercise
+- [ ] Wait 65+ minutes
+- [ ] Log second exercise
+- [ ] AI should NOT find recent session
+- [ ] AI creates new session automatically ✅
+
+**Test 4: Calorie Estimation**
+- [ ] Log 1 exercise → Check: ~50 calories ✅
+- [ ] Log 2 exercises in same session → Check: ~100 calories ✅
+- [ ] Provide explicit duration (e.g., "workout took 45 minutes") → Check: ~225 calories ✅
+
+**Test 5: PR Detection Still Works**
+- [ ] Log exercise with new PR weight
+- [ ] AI should still celebrate PR 🎉
+- [ ] PR info should appear in confirmation message
+- [ ] Check Firestore: isPR: true on that exercise
+
+**Test 6: Total Volume Calculation**
+- [ ] Log 2 exercises in one session
+- [ ] Check totalVolume = (sets₁ × reps₁ × weight₁) + (sets₂ × reps₂ × weight₂)
+- [ ] Example: Bench (3×8×30kg) + Biceps (3×8×10kg) = 720 + 240 = 960 kg
+
+---
+
+### 📝 Files Modified
+
+**New Files:**
+- `server/tools/activity/findRecentActivities.js` - Find recent workout sessions
+- `server/tools/activity/updateActivity.js` - Add exercises to existing sessions
+
+**Modified Files:**
+- `server/server.js` - Registered new tools (lines 749-753)
+- `server/prompts/system.js` - Updated STRENGTH TRAINING WORKFLOW section (lines 227-289)
+- `server/tools/activity/logActivity.js` - Added calorie estimation (lines 284-318)
+- `PROJECT_STATE.md` - This documentation
+
+---
+
+### 🎓 Lessons Learned
+
+1. **Same Pattern as Meal Logging:** Session grouping uses identical pattern to meal updates:
+   - findRecentActivities (like findRecentMeals)
+   - updateActivity (like analyzeAndUpdateMeal)
+   - Ask user for confirmation before grouping
+
+2. **Calorie Estimation is Important:** Users expect calorie tracking for ALL activities, including strength training. Even rough estimates (5 cal/min) provide value.
+
+3. **Flexible Duration:** AI can ask for duration OR estimate it automatically. Estimation formula (10 min per exercise) provides reasonable default.
+
+4. **Session Names Matter:** "Chest & Arms Workout" is more meaningful than "Upper Body Workout" or "Dumbbell Bench Press". AI should update session names when adding exercises.
+
+5. **Time Window is Key:** 60-minute window for session grouping handles:
+   - Quick consecutive exercises (2-5 minutes apart)
+   - Full workout sessions with rest periods (30-45 minutes)
+   - Prevents grouping unrelated workouts from different times
+
+---
+
+### 🚀 Next Steps
+
+**Priority 1: TEST** the session grouping workflow end-to-end:
+1. Deploy to Railway with updated server code
+2. Test all scenarios from Testing Checklist above
+3. Verify Firestore data structure matches expectations
+4. Check that AI text generation still works (may have empty text bug)
+
+**Priority 2: Monitor for Issues:**
+- Check if AI correctly calls findRecentActivities before each new exercise
+- Verify AI asks user for confirmation (doesn't auto-group)
+- Ensure updateActivity receives real session IDs (not placeholders)
+
+**Priority 3: Consider Future Enhancements:**
+- Smart session naming (AI suggests "Leg Day" for squats+lunges, etc.)
+- Session summary stats (total exercises, total volume, calories)
+- Allow user to split sessions retroactively ("Actually those were 2 workouts")
+- Voice-based duration tracking ("I just finished, took me 30 minutes")
+
+---
+
+**The core implementation is SOLID.** Session grouping and calorie tracking are now in place, matching the PRD requirements and user expectations.
+
+---
+
 **End of Project State Document**
