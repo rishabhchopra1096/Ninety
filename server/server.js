@@ -1100,6 +1100,36 @@ app.post("/api/chat", async (req, res) => {
 
     /*
      * ============================================================================
+     * FETCH USER PROFILE FOR AI CONTEXT
+     * ============================================================================
+     *
+     * Fetch user's profile data (weight, age, gender) to enable personalized
+     * calorie estimation for activities. Falls back to defaults if profile
+     * doesn't exist (non-blocking for development).
+     */
+    let userProfile = null;
+    if (db && userId) {
+      try {
+        console.log('📋 Fetching user profile for AI context...');
+        const userDoc = await db.collection('users').doc(userId).get();
+        if (userDoc.exists) {
+          userProfile = userDoc.data();
+          console.log('✅ User profile loaded:', {
+            hasWeight: !!userProfile.weight,
+            hasAge: !!userProfile.age,
+            hasGender: !!userProfile.gender,
+          });
+        } else {
+          console.log('ℹ️  No user profile found, AI will use default estimates');
+        }
+      } catch (error) {
+        console.error('⚠️  Error fetching user profile:', error);
+        // Continue without profile - not blocking
+      }
+    }
+
+    /*
+     * ============================================================================
      * ADD USER PROFILE CONTEXT TO SYSTEM PROMPT
      * ============================================================================
      *
@@ -1158,36 +1188,6 @@ IMPORTANT INSTRUCTIONS FOR CALORIE ESTIMATION:
      * But for now, this is how Vercel AI SDK v5 tools access context.
      */
     global.currentUserId = userId;
-
-    /*
-     * ============================================================================
-     * FETCH USER PROFILE FOR AI CONTEXT
-     * ============================================================================
-     *
-     * Fetch user's profile data (weight, age, gender) to enable personalized
-     * calorie estimation for activities. Falls back to defaults if profile
-     * doesn't exist (non-blocking for development).
-     */
-    let userProfile = null;
-    if (db && userId) {
-      try {
-        console.log('📋 Fetching user profile for AI context...');
-        const userDoc = await db.collection('users').doc(userId).get();
-        if (userDoc.exists) {
-          userProfile = userDoc.data();
-          console.log('✅ User profile loaded:', {
-            hasWeight: !!userProfile.weight,
-            hasAge: !!userProfile.age,
-            hasGender: !!userProfile.gender,
-          });
-        } else {
-          console.log('ℹ️  No user profile found, AI will use default estimates');
-        }
-      } catch (error) {
-        console.error('⚠️  Error fetching user profile:', error);
-        // Continue without profile - not blocking
-      }
-    }
 
     /*
      * ============================================================================
