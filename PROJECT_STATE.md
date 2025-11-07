@@ -1108,6 +1108,7 @@ After extensive debugging, testing, and research, we identified the **REAL** pro
 When AI calls `findRecentMeals`, it successfully finds meals BUT generates **EMPTY TEXT** after the tool call. This happens with BOTH OpenAI GPT-4o-mini AND Claude Sonnet 4.5.
 
 **Evidence:**
+
 ```
 ✅ Found 2 recent meals from Firestore
 ✅ AI request successful
@@ -1116,6 +1117,7 @@ When AI calls `findRecentMeals`, it successfully finds meals BUT generates **EMP
 ```
 
 **Research Findings:**
+
 - Investigated Vercel AI SDK GitHub Issue #4126
 - OpenAI and Google models return `content: null` after tool calls
 - Anthropic (Claude) is designed to include text BUT still produces empty text in our case
@@ -1124,19 +1126,22 @@ When AI calls `findRecentMeals`, it successfully finds meals BUT generates **EMP
 ### 6 Phases Completed ✅
 
 #### **Phase 1: Debug Logging** ✅ COMPLETED (then removed)
+
 - Added extensive debug logging to understand SDK behavior
 - Logged `result.text`, `result.steps`, `toolCalls`, `toolResults`
 - Discovered the empty text issue
 - **Later removed** due to production crashes (see Phase 1 Fix below)
 
 #### **Phase 2: Remove Mock Database** ✅ COMPLETED
+
 **Locations:** Lines 750-757, 906-913, 1134-1141, 1256-1266
 
 Changed from silent fallback to explicit errors:
+
 ```javascript
 // BEFORE:
 if (!db) {
-  console.warn('⚠️  Firestore not available, using mock database');
+  console.warn("⚠️  Firestore not available, using mock database");
   return mockData; // DANGEROUS - creates inconsistent state!
 }
 
@@ -1145,7 +1150,7 @@ if (!db) {
   console.error("❌ CRITICAL: Firestore not initialized");
   return {
     success: false,
-    message: "Database unavailable. Please try again later."
+    message: "Database unavailable. Please try again later.",
   };
 }
 ```
@@ -1153,9 +1158,11 @@ if (!db) {
 **Why This Matters:** Production code should FAIL LOUDLY if database unavailable. Silent fallbacks to fake data create inconsistent state between what AI thinks happened and reality.
 
 #### **Phase 3: Simplify findRecentMeals** ✅ COMPLETED
+
 **Location:** Lines 883-937
 
 Removed `containsFood` parameter and client-side filtering:
+
 ```javascript
 // BEFORE:
 inputSchema: z.object({
@@ -1189,11 +1196,12 @@ execute: async ({ limit }) => {
 **Why This Matters:** Code-based string matching (`containsFood.includes()`) can't understand context like "that was lunch" or "the eggs I had". AI needs full meal data to analyze conversation context.
 
 #### **Phase 4: Redesign updateMeal to be AI-Driven** ✅ COMPLETED
+
 **Location:** Lines 985-1290
 
 Complete tool redesign - accepts natural language `updateRequest` instead of rigid structured parameters:
 
-```javascript
+````javascript
 // BEFORE (rigid parameters):
 inputSchema: z.object({
   mealId: z.string(),
@@ -1256,9 +1264,10 @@ INSTRUCTIONS:
     };
   }
 })
-```
+````
 
 **Why This Matters:** Users say things like:
+
 - "I only had half"
 - "Add a Coke to that"
 - "Actually no cheese"
@@ -1267,20 +1276,24 @@ INSTRUCTIONS:
 AI can understand these naturally - code can't.
 
 #### **Phase 1 Fix: Remove Crashing Debug Logging** ✅ COMPLETED
+
 **Error:** `TypeError: Cannot read properties of undefined (reading 'substring')` at line 1662
 
 **Root cause:** Debug logging tried to call `.substring()` on undefined:
+
 ```javascript
 console.log(`Args: ${JSON.stringify(tc.args).substring(0, 100)}...`); // ❌ Crashes if tc.args is undefined
 ```
 
 **Fix:** Removed extensive debug logging (lines 1650-1706), kept only safe logging:
+
 ```javascript
 console.log("📊 result.text:", result.text ? "present" : "EMPTY");
 console.log("📊 result.steps count:", result.steps?.length || 0);
 ```
 
 #### **Phase 6: Switch to Claude Sonnet 4.5** ✅ COMPLETED
+
 **Locations:** Lines 36, 1197, 1611
 
 Initially thought empty text was a GPT-4o-mini limitation. Migrated to Claude Sonnet 4.5:
@@ -1297,6 +1310,7 @@ model: anthropic("claude-sonnet-4-5"),
 ```
 
 **Deployment fixes:**
+
 - Added `"@ai-sdk/anthropic": "^2.0.41"` to `server/package.json`
 - Added `ANTHROPIC_API_KEY` to Railway environment variables
 - Fixed MODULE_NOT_FOUND error (Railway uses server's package.json, not root)
@@ -1304,6 +1318,7 @@ model: anthropic("claude-sonnet-4-5"),
 **Result:** Same empty text issue persists - confirmed this is NOT a model problem.
 
 **Cost Impact:**
+
 - GPT-4o-mini: $0.60/mo for current usage
 - Claude Sonnet 4.5: $13/mo for current usage
 - Worth it for better conversational quality in tool-heavy apps
@@ -1315,6 +1330,7 @@ model: anthropic("claude-sonnet-4-5"),
 
 **What's Actually Happening:**
 The workflow design is fundamentally wrong. We're expecting ONE AI call to:
+
 1. Call findRecentMeals
 2. Receive meal data back
 3. Analyze which meal user is referring to
@@ -1324,9 +1340,11 @@ The workflow design is fundamentally wrong. We're expecting ONE AI call to:
 This is too much for a single AI generation step!
 
 **The User's Key Insight:**
+
 > "Once we query the recent meals, shouldn't it undergo a second round of AI evaluation to figure out which meal we're talking about?"
 
 **Correct Workflow (Phase 7 - TO IMPLEMENT):**
+
 ```
 User: "Actually that was lunch not breakfast"
 
@@ -1352,16 +1370,19 @@ Step 5: AI calls analyzeAndUpdateMeal(mealId: "abc123", updateRequest: "change t
 ### Why This Matters
 
 **Current broken flow:**
+
 ```
 findRecentMeals → (empty text) → fallback message "couldn't find meals"
 ```
 
 **Fixed flow:**
+
 ```
 findRecentMeals → identifyMealFromContext → describe meal → confirm → analyzeAndUpdateMeal
 ```
 
 This separates concerns:
+
 - Tool calling (fetch data)
 - AI analysis (which meal?)
 - User communication (describe + confirm)
@@ -1371,6 +1392,7 @@ This separates concerns:
 
 **Vercel AI SDK GitHub Issue #4126:**
 Discussion about empty text after tool calls. Confirmed that:
+
 - OpenAI/Google return `content: null` after tools
 - Anthropic includes text by design
 - Workarounds involve extracting from `result.response.messages`
@@ -1442,30 +1464,36 @@ After implementing the two-step AI analysis and pendingAction state management, 
 ### ✅ What's Working
 
 **1. Basic Meal Logging:**
+
 - ✅ "I had scrambled eggs and toast for breakfast" → AI estimates nutrition → logs successfully
 - ✅ Timestamp validation prevents crashes (defensive fallback to current time)
 - ✅ Meals persist to Firestore correctly
 
 **2. Adding Items to Existing Meals:**
+
 - ✅ "I also had orange juice with that" → AI finds meal → asks for quantity → stores pendingAction
 - ✅ User confirms → Direct execution without re-analysis
 - ✅ Updated meal saved to Firestore with correct totals
 
 **3. Changing Meal Type:**
+
 - ✅ "Actually that was lunch not breakfast" → AI identifies meal → confirms change → updates successfully
 - ✅ pendingAction workflow executes correctly
 
 **4. Changing Quantities:**
+
 - ✅ "I only ate half of that" → AI calculates half portions → confirms → updates all macros correctly
 - ✅ analyzeAndUpdateMeal AI analysis works perfectly for quantity changes
 
 **5. Rejection & Correction:**
+
 - ✅ "I also had a cookie" → Identifies dinner (wrong meal)
 - ✅ "No, the other meal" → AI understands, asks for cookie type
 - ✅ "chocolate chip" → Identifies lunch correctly
 - ✅ "Okay do it" → Executes and adds cookie to correct meal
 
 **6. pendingAction State Management:**
+
 - ✅ Backend creates pendingAction with mealId, updateRequest, expiresAt
 - ✅ Frontend stores and sends back pendingAction
 - ✅ Confirmation detection works ("yes", "okay", "do it")
@@ -1479,6 +1507,7 @@ After implementing the two-step AI analysis and pendingAction state management, 
 **Frequency:** Happens consistently when only 1 recent meal is found
 
 **Root Cause (server.js:197-216):**
+
 ```javascript
 if (meals.length === 1) {
   // Shortcut path - returns immediately without AI analysis
@@ -1492,11 +1521,13 @@ if (meals.length === 1) {
 ```
 
 **Why It's Wrong:**
+
 - For single meals, code skips AI analysis and returns hardcoded message
 - Message doesn't reflect user's actual intent
 - When there are multiple meals, AI generates proper context-aware message
 
 **User Experience:**
+
 ```
 User: "I had a medium glass" (after being asked about OJ size)
 AI: "I found your breakfast... What changes would you like me to make?" ❌
@@ -1504,6 +1535,7 @@ Expected: "I'll add a medium glass of OJ (110 cal). Should I add this?" ✅
 ```
 
 **Evidence from Logs:**
+
 ```
 🔍 Starting meal identification analysis...
 📊 Analyzing 1 meals against user intent: "I had a medium glass."
@@ -1520,6 +1552,7 @@ Expected: "I'll add a medium glass of OJ (110 cal). Should I add this?" ✅
 **Frequency:** Occasional, happens when AI gets confused by vague responses
 
 **Root Cause Chain:**
+
 1. Generic message asks "What changes would you like me to make?"
 2. User responds with details ("medium glass")
 3. Response doesn't match confirmation regex `/^(yes|yeah|...)/i`
@@ -1527,6 +1560,7 @@ Expected: "I'll add a medium glass of OJ (110 cal). Should I add this?" ✅
 5. Calls findRecentMeals AGAIN (duplicate)
 
 **Evidence from Logs:**
+
 ```
 Turn 1: User: "medium glass"
 → findRecentMeals called
@@ -1539,11 +1573,13 @@ Turn 2: User: "Add medium glass OJ"
 ```
 
 **Why It Happens:**
+
 - The confirmation regex is too strict: `/^(yes|yeah|yep|yup|sure|ok|okay|correct|exactly|right|affirmative)/i`
 - Doesn't match descriptive responses like "medium glass" or "change it to lunch"
 - AI interprets these as new requests instead of clarifications
 
 **Fix Required:**
+
 1. Fix Issue 1 first (proper suggestedResponse)
 2. User will then say simple "yes" which matches regex
 3. No more duplicate calls
@@ -1555,11 +1591,13 @@ Turn 2: User: "Add medium glass OJ"
 **Frequency:** Rare, user reported it happened once
 
 **Symptoms:**
+
 - AI says: "I'll add X to your meal. Should I make this change?"
 - User confirms: "Yes"
 - AI responds with confirmation BUT meal not actually updated in Firestore
 
 **Possible Causes:**
+
 - Tool execution failed silently
 - pendingAction expired between turns
 - Frontend didn't send pendingAction back correctly
@@ -1571,6 +1609,7 @@ Turn 2: User: "Add medium glass OJ"
 ### 📊 Testing Summary
 
 **Test Scenarios Executed:**
+
 1. ✅ Basic meal logging (eggs + toast)
 2. ✅ Adding item to meal (orange juice)
 3. ✅ Changing meal type (breakfast → lunch)
@@ -1579,11 +1618,13 @@ Turn 2: User: "Add medium glass OJ"
 6. ✅ Multiple confirmations in sequence
 
 **Success Rate:**
+
 - Core functionality: **95%** (everything works except the two known issues)
 - pendingAction workflow: **100%** (works perfectly when triggered)
 - Meal identification: **100%** (AI correctly identifies meals from context)
 
 **Edge Cases Tested:**
+
 - ✅ User says "No" to wrong meal → Clears pendingAction, continues naturally
 - ✅ User specifies food details in follow-up → AI interprets correctly
 - ✅ Multiple meals in history → AI uses context to identify correct one
@@ -1593,6 +1634,7 @@ Turn 2: User: "Add medium glass OJ"
 ### 🔍 Key Findings from Backend Logs
 
 **Finding 1: Single Meal Shortcut Is the Main Problem**
+
 ```
 === Pattern Observed ===
 ✅ Only one meal found - high confidence match
@@ -1611,6 +1653,7 @@ VS (when multiple meals):
 ---
 
 **Finding 2: pendingAction Workflow is Solid**
+
 ```
 Successful execution pattern:
 🔄 Pending action detected: updateMeal
@@ -1627,6 +1670,7 @@ Successful execution pattern:
 ---
 
 **Finding 3: AI Identification Works Brilliantly**
+
 ```
 Example 1 (Context-aware):
 📊 Analyzing 2 meals against user intent: "Yes, it was a chocolate chip cookie."
@@ -1641,16 +1685,19 @@ Example 1 (Context-aware):
 ### 🎯 Immediate Fix Priority
 
 **Priority 1 (Critical): Remove Single-Meal Shortcut**
+
 - Location: server.js lines 197-216
 - Impact: Fixes 80% of bad UX
 - Complexity: Low (just delete code)
 
 **Priority 2 (Nice-to-have): Expand Confirmation Regex**
+
 - Location: server.js line 1795
 - Impact: Reduces duplicate calls
 - Complexity: Low (add more patterns)
 
 **Priority 3 (Monitor): Investigate Silent Update Failures**
+
 - Need more data from production logs
 - Add explicit success/failure tracking
 - Complexity: Medium
@@ -1660,6 +1707,7 @@ Example 1 (Context-aware):
 ### 📝 Architecture Validation
 
 **The Two-Step AI Analysis Pattern:**
+
 ```
 Step 1: Tool Call (findRecentMeals)
   → Fetches data from Firestore
@@ -1715,6 +1763,7 @@ Step 4: Direct Execution (on confirmation)
 **Activity Logging Requirements (from PRD analysis):**
 
 1. **Inclusive Activity Support:**
+
    - Strength training (sets, reps, weight with PR detection)
    - Cardio (duration, distance, intensity)
    - Classes (dance, yoga, martial arts)
@@ -1722,22 +1771,26 @@ Step 4: Direct Execution (on confirmation)
    - Any physical activity user mentions
 
 2. **Smart Session Grouping:**
+
    - Sequential exercise logging = same workout session
    - Context-based: "Bicep curls" + "Badminton" = separate activities
    - AI uses common sense to group related exercises
 
 3. **Logging Flow:**
+
    - Ask questions first, then save (matching meal pattern)
    - User: "I went for a walk" → AI: "How long?"
    - User: "30 minutes" → AI: "Logging 30-min walk (~150 cal). Correct?"
    - User: "Yes" → Save to Firestore
 
 4. **PR Detection:**
+
    - Automatic comparison with historical data
    - Immediate celebration: "NEW PR! 185 lbs - 10 lbs more than last week! 🎉"
    - Store PR markers in activity data
 
 5. **Data Structure (Nested):**
+
 ```javascript
 {
   id: "session123",
@@ -1757,12 +1810,14 @@ Step 4: Direct Execution (on confirmation)
 ### Critical Discovery: File Size Problem 🚨
 
 **Current State:**
+
 - server.js: **2,310 lines**
 - At AI reliability threshold (>2,000 lines = increased hallucination risk)
 - Adding activity logging: +400-500 lines → **2,710-2,810 lines**
 - **Verdict:** File too large for safe AI editing
 
 **Risk Analysis:**
+
 - AI hallucination risk increases significantly at 2,500+ lines
 - Meal logging was hard-won (12+ hours of debugging)
 - Cannot risk breaking existing functionality
@@ -1775,7 +1830,9 @@ Step 4: Direct Execution (on confirmation)
 Instead of full refactoring, extract only what's necessary:
 
 **What We're Extracting:**
+
 1. ✅ System prompt (207 lines) → `prompts/system.js`
+
    - Pure text, zero logic, zero risk
    - Easy to edit for activity logging
 
@@ -1785,12 +1842,14 @@ Instead of full refactoring, extract only what's necessary:
    - Low coupling, easy to extract
 
 **What We're NOT Touching:**
+
 - ❌ Chat endpoint orchestration (stays in server.js)
 - ❌ Helper functions (identifyMealFromContext stays in server.js)
 - ❌ Firebase initialization (stays in server.js)
 - ❌ Route definitions (stays in server.js)
 
 **Projected File Sizes After Extraction:**
+
 - server.js: ~1,485 lines (manageable)
 - After adding activity tools: ~1,600 lines (safe zone)
 - Reduction: 1,000+ lines removed from main file
@@ -1798,6 +1857,7 @@ Instead of full refactoring, extract only what's necessary:
 ### Implementation Plan (Option B)
 
 **Phase 1: Extract System Prompt (5 minutes)**
+
 ```
 Create: prompts/system.js
 Move: 207 lines of SYSTEM_PROMPT text
@@ -1805,6 +1865,7 @@ Test: ✋ MANUAL TEST - Verify meal logging still works
 ```
 
 **Phase 2: Extract Tools One-by-One (30 minutes)**
+
 ```
 Create structure:
 /tools
@@ -1823,6 +1884,7 @@ Extract order:
 ```
 
 **Phase 3: Add Activity Logging (2-3 hours)**
+
 ```
 Create:
 /tools
@@ -1838,6 +1900,7 @@ Update: prompts/system.js with activity instructions
 ### Testing Strategy (Critical - Cannot Break Meal Logging)
 
 **After System Prompt Extraction:**
+
 ```
 ✅ Log new meal (text)
 ✅ Log meal (voice)
@@ -1849,6 +1912,7 @@ Update: prompts/system.js with activity instructions
 ```
 
 **After Each Tool Extraction:**
+
 ```
 ✅ Test that specific tool still works
 ✅ Test integration with pendingAction
@@ -1856,6 +1920,7 @@ Update: prompts/system.js with activity instructions
 ```
 
 **After Activity Logging Addition:**
+
 ```
 ✅ Log strength workout (multiple exercises)
 ✅ Log cardio activity
@@ -1868,6 +1933,7 @@ Update: prompts/system.js with activity instructions
 ### Risk Mitigation
 
 **Why This is Low Risk:**
+
 1. ✅ Only extracting well-defined boundaries (text and tool definitions)
 2. ✅ No logic changes, just module exports
 3. ✅ Testing after each extraction
@@ -1875,11 +1941,13 @@ Update: prompts/system.js with activity instructions
 5. ✅ Using `require()` for simple module loading
 
 **What Could Go Wrong:**
+
 - Tool references break (unlikely - tools already use `.execute()` pattern)
 - Global state coupling (mitigated - tools already use global.currentUserId)
 - Module export/import issues (easy to fix - syntax errors caught immediately)
 
 **Preservation Guarantees:**
+
 - Function signatures unchanged
 - Error handling patterns preserved
 - pendingAction workflow untouched
@@ -1888,6 +1956,7 @@ Update: prompts/system.js with activity instructions
 ### Current Status: Ready to Begin
 
 **Next Immediate Steps:**
+
 1. Create `prompts/system.js`
 2. Extract system prompt
 3. **✋ STOP - Manual test all meal functionality**
@@ -1896,6 +1965,314 @@ Update: prompts/system.js with activity instructions
 
 **Current Context Used:** ~124K tokens / 200K (62%)
 **After this update:** Documentation preserved for next session
+
+📋 ACTIVITY LOGGING IMPLEMENTATION -
+COMPLETE CONTEXT
+
+I've thoroughly researched both the PRD and
+PROJECT_STATE. Here's what we need to know:
+
+---
+
+1. What We're Building (From PRD)
+
+Activity Types to Support:
+
+- Strength Training: Sets, reps, weight with
+  automatic PR detection
+  - Example: "Bench Press 3x8 @ 185 lbs" →
+    Detects if it's a PR, celebrates it
+- Cardio: Duration, distance, intensity
+  - Example: "30-minute run, 3.2 miles"
+- Classes/Sports: Dance, yoga, basketball,
+  etc.
+  - Example: "Salsa class, 60 minutes"
+
+Session Grouping (AI-Driven):
+
+- Sequential exercises within ~15 min → Same
+  workout session
+- "Bench Press" + "Squats" = gym session ✅
+- "Bench Press" + "Badminton" = separate
+  activities ✅
+
+Data Structure:
+{
+type: "strength_training",
+exercises: [
+{ name: "Bench Press", sets: 3, reps: 8,
+weight: 185, isPR: true },
+{ name: "Squats", sets: 4, reps: 10,
+weight: 225 }
+],
+totalVolume: 8640
+}
+
+---
+
+2. Critical Lessons from Food Logging
+
+❌ Mistake 1: The Single-Item Shortcut
+(Lines 197-216)
+
+What happened:
+
+- When only 1 meal found, code skipped AI
+  analysis
+- Returned hardcoded message: "What changes
+  would you like me to make?"
+- Ignored user's actual intent ("medium
+  glass")
+- Resulted in users needing 3 tries to add
+  orange juice
+
+Why it's wrong:
+
+- Inconsistent behavior (single vs multiple
+  items = different code paths)
+- Hardcoded messages can't adapt to context
+- Breaks user experience
+
+For Activities:
+
+- ✅ NEVER create shortcuts for single
+  activity
+- ✅ ALWAYS use AI analysis even when only 1
+  activity found
+
+---
+
+✅ Success 1: Two-Step AI Analysis Pattern
+
+What works:
+
+1. Turn 1: User says "I also had orange
+   juice"
+
+
+    - Call findRecentMeals() → Get meals
+    - Call identifyMealFromContext() → AI
+
+identifies which meal - Generate response: "I'll add OJ (110
+cal). Should I add this?" - Create pendingAction with mealId 2. Turn 2: User confirms "Yes" - Detect confirmation regex - Execute analyzeAndUpdateMeal() DIRECTLY
+(no re-analysis) - Update meal
+
+For Activities:
+
+- ✅ Create identifyActivityFromContext()
+  helper (mirror lines 180-304)
+- ✅ Use pendingAction workflow
+- ✅ Don't combine tool calling + analysis
+  in one step
+
+---
+
+✅ Success 2: AI-Driven Updates (Natural
+Language)
+
+Old Approach (Rigid):
+updateMeal({ mealId, foods: [{...}],
+totalCalories: 440 }) // ❌ Too rigid
+
+New Approach (Flexible):
+analyzeAndUpdateMeal({
+mealId,
+updateRequest: "I only had half" // ✅
+Natural language!
+})
+
+How it works:
+
+1. Fetch existing meal
+2. Make NESTED AI call with analysis prompt
+3. AI generates complete new object with
+   recalculated totals
+4. Parse JSON, update Firestore
+
+For Activities:
+
+- ✅ Same pattern:
+  analyzeAndUpdateActivity({ activityId,
+  updateRequest: "I did 4 sets not 3" })
+- ✅ Nested AI call handles transformations
+- ✅ Recalculates totalVolume automatically
+
+---
+
+3. What We'll Reuse (Proven Patterns)
+
+| Food Logging Pattern |
+Activity Logging Equivalent |
+|----------------------------------|--------
+------------------------------|
+| logMeal.js |
+logActivity.js |
+| findRecentMeals.js |
+findRecentActivities.js |
+| analyzeAndUpdateMeal.js |
+analyzeAndUpdateActivity.js |
+| getDailySummary.js |
+getActivitySummary.js |
+| identifyMealFromContext() helper |
+identifyActivityFromContext() helper |
+| pendingAction workflow | Same
+pendingAction workflow |
+| System prompt section |
+Parallel activity section |
+
+Tool Structure (Copy Exactly):
+const { tool } = require("ai");
+const { z } = require("zod");
+
+module.exports = (admin, db) => tool({
+description: "...",
+inputSchema: z.object({...}),
+execute: async ({ params }, { abortSignal
+}) => {
+console.log("🔧 Executing tool");
+const userId = global.currentUserId ||
+"anonymous";
+
+      if (!db) {
+        return { success: false, message:
+
+"Database unavailable" };
+}
+
+      try {
+        // Logic
+        return { success: true };
+      } catch (error) {
+        return { success: false, message:
+
+error.message };
+}
+}
+});
+
+---
+
+4. New Challenges for Activities
+
+Challenge 1: Multiple Schemas
+
+- Strength = complex nested (exercises
+  array)
+- Cardio = simple flat (duration, distance)
+- Need z.union() to handle both
+
+Challenge 2: Session Grouping
+
+- Meals are discrete (one breakfast = one
+  event)
+- Activities can be grouped (bench + squats
+  = one session)
+- AI needs context: time proximity +
+  exercise relatedness
+
+Challenge 3: PR Detection (New Feature)
+
+- Query historical data for same exercise
+- Compare weights
+- Mark as PR if new > previous best
+- Celebrate: "🎉 NEW PR! 185 lbs - 10 lbs
+  more than Jan 11!"
+
+Challenge 4: Different Update Types
+
+- Meals: change type, quantity, add/remove
+  foods
+- Activities: change sets/reps/weight, add
+  exercises, split sessions
+
+---
+
+5. Implementation Plan
+
+Phase 1: Refactoring ✅ COMPLETE
+
+- Extracted system prompt to
+  prompts/system.js
+- Extracted 3 tools to tools/ directory
+- server.js reduced from 2,310 → 1,518 lines
+
+Phase 2: Activity Tools (Next)
+
+1. Create tools/activity/logActivity.js
+
+
+    - Handle strength/cardio/class schemas
+
+(z.union) - Add PR detection for strength training - Save to
+activities/{userId}/sessions/{sessionId} 2. Create
+tools/activity/findRecentActivities.js - Query recent activities - Return all types (strength, cardio,
+etc.) 3. Create identifyActivityFromContext()
+helper in server.js - Mirror identifyMealFromContext() (lines
+180-304) - ⚠️ NO SINGLE-ITEM SHORTCUT (learn from
+mistake!) 4. Create
+tools/activity/analyzeAndUpdateActivity.js - AI-driven natural language updates - Recalculate totalVolume for strength - Re-check PRs after updates
+
+Phase 3: System Prompt Updates
+
+- Add ## ACTIVITY LOGGING INTELLIGENCE
+  section
+- Mirror structure from food logging
+- Add workflow examples for
+  strength/cardio/session grouping
+
+Phase 4: Testing
+
+- Test each tool individually
+- Test session grouping
+- Test PR detection
+- CRITICAL: Verify meal logging still works!
+
+---
+
+6. Anti-Patterns to Avoid
+
+// ❌ DON'T: Single-item shortcut
+if (activities.length === 1) {
+return { suggestedResponse: "Hardcoded
+message" }; // BREAKS UX
+}
+
+// ✅ DO: Always use AI analysis
+const result = await
+identifyActivityFromContext(activities,
+messages, intent);
+
+// ❌ DON'T: Mock data in production
+if (!db) return { activities: MOCK_DATA };
+
+// ✅ DO: Fail loudly
+if (!db) return { success: false, message:
+"Database unavailable" };
+
+// ❌ DON'T: Rigid parameters
+updateActivity({ activityId, exercises:
+[{...}], totalVolume: 8640 });
+
+// ✅ DO: Natural language
+analyzeAndUpdateActivity({ activityId,
+updateRequest: "I did 4 sets not 3" });
+
+---
+
+Ready to Proceed?
+
+We have:
+
+- ✅ Complete context from PRD (activity
+  requirements)
+- ✅ Complete context from PROJECT_STATE
+  (lessons learned)
+- ✅ Refactoring complete (server.js = 1,518
+  lines, safe headroom)
+- ✅ Proven patterns identified (reuse from
+  food logging)
+- ✅ Mistakes documented (avoid single-item
+  shortcut, etc.)
 
 ---
 

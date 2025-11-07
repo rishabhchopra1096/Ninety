@@ -739,14 +739,13 @@ app.post(
  * ============================================================================
  */
 const tools = {
-  // Extracted to tools/logMeal.js
+  // NUTRITION TOOLS - Extracted to tools/
   logMeal: require("./tools/logMeal")(admin, db),
-
-  // Extracted to tools/findRecentMeals.js
   findRecentMeals: require("./tools/findRecentMeals")(admin, db),
-
-  // Extracted to tools/analyzeAndUpdateMeal.js
   analyzeAndUpdateMeal: require("./tools/analyzeAndUpdateMeal")(admin, db),
+
+  // ACTIVITY TOOLS - Extracted to tools/activity/
+  logActivity: require("./tools/activity/logActivity")(admin, db),
 
   /*
    * ============================================================================
@@ -1100,6 +1099,54 @@ app.post("/api/chat", async (req, res) => {
     }
 
     /*
+     * ============================================================================
+     * ADD USER PROFILE CONTEXT TO SYSTEM PROMPT
+     * ============================================================================
+     *
+     * Provides AI with user's physical stats for accurate calorie estimation.
+     * Falls back to defaults if profile doesn't exist (non-blocking).
+     */
+    if (userProfile && (userProfile.weight || userProfile.age)) {
+      console.log('📋 Adding user profile to AI context');
+
+      systemPromptWithContext += `\n\nUSER PROFILE:
+The user you are coaching has the following profile information. Use this to provide personalized calorie and macro estimates.
+
+Physical Stats:
+- Weight: ${userProfile.weight || 170} ${userProfile.weightUnit || 'lbs'}
+- Age: ${userProfile.age || 28} years
+- Gender: ${userProfile.gender || 'male'}
+- Height: ${userProfile.height || 70} ${userProfile.heightUnit || 'inches'}
+- Activity Level: ${userProfile.activityLevel || 'moderate'}
+
+Fitness Goal: ${userProfile.goalType || 'maintain weight'}
+Daily Calorie Target: ${userProfile.calorieTarget || 2400} calories
+
+IMPORTANT INSTRUCTIONS FOR CALORIE ESTIMATION:
+1. When logging activities (cardio, classes, sports), estimate calories burned based on:
+   - User's weight (heavier = more calories burned)
+   - Activity duration and intensity
+   - Activity type
+
+2. Use these formulas as guidelines:
+   - Running: ~0.63 * weight(lbs) * distance(miles)
+   - Cycling: ~0.049 * weight(lbs) * duration(minutes)
+   - Walking: ~0.30 * weight(lbs) * distance(miles)
+   - Classes/Sports: Adjust by intensity
+     * Low intensity: ~3 calories/minute
+     * Moderate intensity: ~5 calories/minute
+     * High intensity: ~8 calories/minute
+
+3. Round estimates to nearest 10 calories (e.g., "approximately 310 calories")
+
+4. Show your reasoning in confirmation messages: "Based on your weight (${userProfile.weight || 170} ${userProfile.weightUnit || 'lbs'}), I estimate..."
+
+5. Be transparent about estimates: use words like "approximately", "around", "estimated"`;
+    } else {
+      console.log('ℹ️  No profile data available, AI will use general estimates');
+    }
+
+    /*
      * SET GLOBAL USER ID
      *
      * This is how the tools know which user's data to read/write.
@@ -1111,6 +1158,36 @@ app.post("/api/chat", async (req, res) => {
      * But for now, this is how Vercel AI SDK v5 tools access context.
      */
     global.currentUserId = userId;
+
+    /*
+     * ============================================================================
+     * FETCH USER PROFILE FOR AI CONTEXT
+     * ============================================================================
+     *
+     * Fetch user's profile data (weight, age, gender) to enable personalized
+     * calorie estimation for activities. Falls back to defaults if profile
+     * doesn't exist (non-blocking for development).
+     */
+    let userProfile = null;
+    if (db && userId) {
+      try {
+        console.log('📋 Fetching user profile for AI context...');
+        const userDoc = await db.collection('users').doc(userId).get();
+        if (userDoc.exists) {
+          userProfile = userDoc.data();
+          console.log('✅ User profile loaded:', {
+            hasWeight: !!userProfile.weight,
+            hasAge: !!userProfile.age,
+            hasGender: !!userProfile.gender,
+          });
+        } else {
+          console.log('ℹ️  No user profile found, AI will use default estimates');
+        }
+      } catch (error) {
+        console.error('⚠️  Error fetching user profile:', error);
+        // Continue without profile - not blocking
+      }
+    }
 
     /*
      * ============================================================================
