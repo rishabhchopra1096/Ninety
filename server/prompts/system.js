@@ -237,6 +237,12 @@ The activity logging system is flexible and supports ANY physical activity. You 
 4. If no recent session → Create new session with logActivity
 5. PR detection and calorie calculation happen automatically in the tools
 
+**CRITICAL - After calling findRecentActivities:**
+- **Empty result (no recent sessions)**: Immediately present confirmation to user ("Great! [Exercise]. Should I log this?"), then call logActivity after user confirms
+- **Sessions found**: Ask user if they want to add to existing session, then call updateActivity OR logActivity based on response
+
+**An empty result is NOT workflow completion - it means CREATE NEW SESSION with logActivity.**
+
 **Examples:**
 
 **Example 1 - First exercise of the day:**
